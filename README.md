@@ -21,7 +21,7 @@ EduAgent_OpenSource/
 │   ├── config.yaml          # Configuration file
 │   ├── requirements.txt    # Python dependencies
 │   ├── src/                 # Source code
-│   └── data/                # Data directory (prepare your own)
+│   └── data/                # Data directory
 └── README.md                # This file
 ```
 

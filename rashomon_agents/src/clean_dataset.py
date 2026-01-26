@@ -21,12 +21,11 @@ def normalize_gender(x: object) -> str:
         return "female"
     if s in {"unknown", "unk"}:
         return "unknown"
-    # 数据中已基本为 male/female/unknown；其它情况统一 unknown
     return "unknown"
 
 
 def numeric_only(series: pd.Series) -> pd.Series:
-    # 仅保留纯数字字符串/数字，其余置空（NaN）
+    """Keep only pure numeric strings/numbers, set others to NaN."""
     def fix(v: object):
         if v is None or (isinstance(v, float) and pd.isna(v)):
             return pd.NA
@@ -41,10 +40,9 @@ def numeric_only(series: pd.Series) -> pd.Series:
 
 
 def order_columns(df: pd.DataFrame) -> pd.DataFrame:
-    # 基础信息 → 问卷 → 成绩（尽量以列名规则自动推断）
+    """Order columns: basic info → questionnaire → scores."""
     base_cols = [c for c in ["student_id", "grade_code", "class_code", "gender"] if c in df.columns]
 
-    # 问卷：以你给的独热字段前缀为主，保持原始出现顺序
     survey_prefixes = (
         "personality_",
         "hobby_",
@@ -56,17 +54,14 @@ def order_columns(df: pd.DataFrame) -> pd.DataFrame:
         "best_pair_",
         "most_popular_",
     )
-    survey_cols = [c for c in df.columns if c.startswith(survey_prefixes)]
+    survey_cols = [c for c in df.columns if any(c.startswith(p) for p in survey_prefixes)]
 
-    # 成绩：以 e0 开头
     score_cols = [c for c in df.columns if c.startswith("e0")]
 
-    # 其它列（不丢弃，只放到问卷和成绩之间）
     used = set(base_cols) | set(survey_cols) | set(score_cols)
     other_cols = [c for c in df.columns if c not in used]
 
     ordered = base_cols + survey_cols + other_cols + score_cols
-    # 去重保持顺序
     seen = set()
     final = []
     for c in ordered:

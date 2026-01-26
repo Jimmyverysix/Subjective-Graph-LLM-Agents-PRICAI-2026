@@ -37,8 +37,6 @@ env/
 # Jupyter Notebook
 .ipynb_checkpoints
 *.ipynb
-
-# 数据和敏感信息（重要：确保不提交任何包含个人信息的文件）
 *.csv
 *.xlsx
 *.xls
@@ -47,15 +45,14 @@ data/*.xlsx
 data/*.xls
 FINAL_*.csv
 *_id.xlsx
-*_级*.xlsx
 GRADE/
 unmatched_*.xlsx
 
-# 日志文件
+# Log files
 *.log
 logs/
 
-# 模型检查点
+# Model checkpoints
 checkpoints/
 *.pth
 *.pt
@@ -63,7 +60,7 @@ checkpoints/
 *.h5
 *.pkl
 
-# LaTeX编译文件
+# LaTeX compilation files
 *.aux
 *.log
 *.out
@@ -74,28 +71,25 @@ checkpoints/
 *.fdb_latexmk
 *.fls
 
-# 环境变量
+# Environment variables
 .env
 .env.local
 .env.*
 
-# 配置文件中的敏感信息
+# Sensitive information in config files
 configs/*_secret.yaml
 configs/*_local.yaml
 
-# 临时文件
+# Temporary files
 tmp/
 temp/
 *.tmp
 
-# 输出文件（保留论文需要的图表，但忽略大文件）
+# Output files (keep paper-required figures, but ignore large files)
 output/**
-!output/uai_figures/
-!output/uai_figures/*.pdf
-!output/uai_figures/*.png
-!output/uai_figures_ci/
-!output/uai_figures_ci/*.pdf
-!output/uai_figures_ci/*.png
+!output/figures/
+!output/figures/*.pdf
+!output/figures/*.png
 !output/degroot_sweep/
 !output/degroot_sweep/*.png
 !output/**/figures/

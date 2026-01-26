@@ -1,7 +1,7 @@
-"""LLM 智能体核心：消息生成、信任评估、贝叶斯更新。
+"""Core LLM agent: message generation, trust evaluation, and Bayesian updates.
 
-- `LLMClient`：统一封装 OpenRouter chat/completions（支持并行/缓存/无 key 的 mock）
-- `LLMAgent`：在“受限视野”的证据上下文中生成评估消息，并对收到消息进行信任门控与信念更新
+- `LLMClient`: Unified wrapper for OpenRouter chat/completions (supports parallel calls, caching, and mock mode without API key)
+- `LLMAgent`: Generates evaluation messages in limited-scope evidence context, and performs trust gating and belief updates on received messages
 """
 from __future__ import annotations
 
@@ -25,15 +25,15 @@ from .rag import RAGEngine, RetrievalResult
 
 @dataclass
 class EvaluationMessage:
-    """智能体对目标的评估消息。
+    """Agent's evaluation message for a target.
     
     m_{i→j}^{(t,r)} = {ŝ, û, rationale}
     """
-    sender_id: int  # 发送者
-    target_id: int  # 被评估者
+    sender_id: int
+    target_id: int
     ability_score: float  # ŝ ∈ [0, 1]
     uncertainty: float  # û ∈ [0, 1]
-    rationale: str  # 理由（≤40字）
+    rationale: str  # Rationale (≤40 characters)
     timestamp: Tuple[int, int] = (0, 0)  # (epoch, round)
     
     def to_dict(self) -> Dict:
@@ -49,15 +49,15 @@ class EvaluationMessage:
 
 @dataclass
 class TrustWeight:
-    """可信度权重。
+    """Trust weight.
     
     ω_j(i→k; t,r) ∈ [0, 1]
     """
-    receiver_id: int  # 接收者
-    sender_id: int  # 发送者
-    target_id: int  # 关于谁的消息
-    trust: float  # 信任度
-    uncertainty: float  # 不确定性
+    receiver_id: int
+    sender_id: int
+    target_id: int
+    trust: float
+    uncertainty: float
     
     def to_dict(self) -> Dict:
         return {
@@ -71,20 +71,20 @@ class TrustWeight:
 
 @dataclass
 class BeliefState:
-    """智能体对某个同学能力的信念分布。
+    """Agent's belief distribution about a student's ability.
     
     B_{jk}^{(t)}(θ) = N(μ, σ)
     """
     target_id: int
-    mu: float = 0.5  # 均值
-    sigma: float = 0.3  # 标准差
+    mu: float = 0.5  # Mean
+    sigma: float = 0.3  # Standard deviation
     
     def update_bayesian(
         self,
         observation: float,
         obs_precision: float,
     ) -> "BeliefState":
-        """贝叶斯更新（精度加权融合）。
+        """Bayesian update (precision-weighted fusion).
         
         μ' = (σ^{-1}·μ + τ·ŝ) / (σ^{-1} + τ)
         σ' = 1 / (σ^{-1} + τ)
@@ -111,19 +111,19 @@ class BeliefState:
 
 @dataclass
 class AgentState:
-    """智能体的完整状态。"""
+    """Complete state of an agent."""
     agent_id: int
     class_code: str
     
-    # 对所有同学的能力信念 B_j = {B_{jk}}_{k∈V}
+    # Beliefs about all students' abilities B_j = {B_{jk}}_{k∈V}
     beliefs: Dict[int, BeliefState] = field(default_factory=dict)
     
-    # 当前时间点
+    # Current time point
     current_epoch: int = 0
     current_round: int = 0
     
     def get_belief(self, target_id: int) -> BeliefState:
-        """获取对某同学的信念，不存在则初始化。"""
+        """Get belief about a student, initialize if not exists."""
         if target_id not in self.beliefs:
             self.beliefs[target_id] = BeliefState(target_id=target_id)
         return self.beliefs[target_id]
@@ -134,15 +134,12 @@ class AgentState:
         observation: float,
         precision: float,
     ):
-        """更新对某同学的信念。"""
+
         old_belief = self.get_belief(target_id)
         self.beliefs[target_id] = old_belief.update_bayesian(observation, precision)
     
     def set_self_anchor(self, ability: float, sigma: float = 0.05):
-        """设置自我真值锚点。
-        
-        μ_{jj}^{(t)} ← h(Y_j^{(t)}), σ_{jj}^{(t)} ← σ_self << 1
-        """
+
         self.beliefs[self.agent_id] = BeliefState(
             target_id=self.agent_id,
             mu=ability,
@@ -150,16 +147,16 @@ class AgentState:
         )
     
     def get_belief_summary(self) -> Dict[int, Tuple[float, float]]:
-        """获取信念摘要：{target_id: (mu, sigma)}"""
+        """Get belief summary: {target_id: (mu, sigma)}"""
         return {k: (v.mu, v.sigma) for k, v in self.beliefs.items()}
 
 
 # ============================================================
-# LLM 客户端
+# LLM Client
 # ============================================================
 
 class LLMClient:
-    """LLM API 客户端（支持 OpenRouter，支持并行调用）。"""
+    """LLM API client (supports OpenRouter, parallel calls)."""
     
     def __init__(
         self,
@@ -171,7 +168,7 @@ class LLMClient:
         timeout: float = 60.0,
         max_retries: int = 6,
         cache_dir: Optional[Path] = None,
-        max_workers: int = 50,  # 并行线程数
+        max_workers: int = 50,
     ):
         self.base_url = base_url
         self.model = model
@@ -182,28 +179,25 @@ class LLMClient:
         self.max_retries = max_retries
         self.max_workers = max_workers
         
-        # 缓存目录
         self.cache_dir = cache_dir
         if cache_dir:
             cache_dir.mkdir(parents=True, exist_ok=True)
         
-        # 统计（线程安全）
         self._lock = threading.Lock()
         self.total_calls = 0
         self.total_input_tokens = 0
         self.total_output_tokens = 0
         self.cache_hits = 0
         
-        # 线程池
         self._executor = ThreadPoolExecutor(max_workers=max_workers)
     
     def _cache_key(self, messages: List[Dict]) -> str:
-        """生成缓存键。"""
+        """Generate cache key."""
         content = json.dumps(messages, sort_keys=True, ensure_ascii=False)
         return hashlib.md5(content.encode()).hexdigest()
     
     def _load_cache(self, key: str) -> Optional[str]:
-        """从缓存加载（线程安全）。"""
+        """Load from cache (thread-safe)."""
         if not self.cache_dir:
             return None
         cache_file = self.cache_dir / f"{key}.json"
@@ -219,7 +213,7 @@ class LLMClient:
         return None
     
     def _save_cache(self, key: str, response: str):
-        """保存到缓存（线程安全）。"""
+        """Save to cache (thread-safe)."""
         if not self.cache_dir:
             return
         cache_file = self.cache_dir / f"{key}.json"
@@ -227,10 +221,10 @@ class LLMClient:
             with open(cache_file, "w", encoding="utf-8") as f:
                 json.dump({"response": response}, f, ensure_ascii=False)
         except IOError:
-            pass  # 忽略写入错误
+            pass  
     
     def _update_stats(self, input_tokens: int, output_tokens: int):
-        """线程安全地更新统计。"""
+        """Update statistics (thread-safe)."""
         with self._lock:
             self.total_calls += 1
             self.total_input_tokens += input_tokens
@@ -242,14 +236,14 @@ class LLMClient:
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
     ) -> str:
-        """调用 LLM API（线程安全）。"""
-        # 检查缓存
+        """Call LLM API (thread-safe)."""
         cache_key = self._cache_key(messages)
         cached = self._load_cache(cache_key)
         if cached:
             return cached
         
-        # 如果没有 API key，返回模拟响应
+        if not self.api_key:
+            return self._mock_response(messages)
         if not self.api_key:
             return self._mock_response(messages)
         
@@ -276,7 +270,6 @@ class LLMClient:
                     response.raise_for_status()
                     data = response.json()
                     
-                    # 更新统计（线程安全）
                     usage = data.get("usage", {})
                     self._update_stats(
                         usage.get("prompt_tokens", 0),
@@ -284,16 +277,13 @@ class LLMClient:
                     )
                     
                     result = data["choices"][0]["message"]["content"]
-                    
-                    # 保存缓存
                     self._save_cache(cache_key, result)
                     
                     return result
             except Exception as e:
                 if attempt < self.max_retries - 1:
-                    time.sleep(2 ** attempt)  # 指数退避
+                    time.sleep(2 ** attempt)
                     continue
-                # 最后一次尝试失败，返回模拟响应而非抛异常
                 return self._mock_response(messages)
         
         return self._mock_response(messages)
@@ -304,15 +294,15 @@ class LLMClient:
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
     ) -> List[str]:
-        """批量并行调用 LLM API。
+        """Batch parallel LLM API calls.
         
         Args:
-            messages_list: 多个消息列表
-            temperature: 温度参数
-            max_tokens: 最大 token 数
+            messages_list: List of message lists
+            temperature: Temperature parameter
+            max_tokens: Maximum tokens
         
         Returns:
-            响应列表（与输入顺序对应）
+            List of responses (in same order as input)
         """
         results = [None] * len(messages_list)
         
@@ -332,24 +322,21 @@ class LLMClient:
         return results
     
     def _mock_response(self, messages: List[Dict]) -> str:
-        """模拟响应（用于测试/无 API key 时）。"""
-        # 检测是评估任务还是信任评估任务
+        """Mock response (for testing/without API key)."""
         system_msg = messages[0]["content"] if messages else ""
         
         if "ability_score" in system_msg:
-            # 评估任务 - 返回模拟的 JSON
             return json.dumps({
                 "evaluations": [
                     {
                         "target_id": 12345,
                         "ability_score": 0.6,
                         "uncertainty": 0.3,
-                        "rationale": "基于有限信息的估计"
+                        "rationale": "Estimate based on limited information"
                     }
                 ]
             }, ensure_ascii=False)
         elif "trust_weight" in system_msg:
-            # 信任评估任务
             return json.dumps({
                 "trust_weight": 0.7,
                 "uncertainty": 0.2
@@ -358,7 +345,7 @@ class LLMClient:
             return "{}"
     
     def get_stats(self) -> Dict:
-        """获取统计信息。"""
+        """Get statistics."""
         return {
             "total_calls": self.total_calls,
             "total_input_tokens": self.total_input_tokens,
@@ -372,86 +359,86 @@ class LLMClient:
 
 
 # ============================================================
-# 提示词模板
+# Prompt Templates
 # ============================================================
 
-EVALUATION_SYSTEM_PROMPT = """你是班级社交环境中的学生智能体。你只能依据给定的【检索证据】与【自身性格/焦虑】做出判断。
+EVALUATION_SYSTEM_PROMPT = """You are a student agent in a classroom social environment. You can only make judgments based on the given [Retrieval Evidence] and [Your Personality/Anxiety].
 
-你的任务是评估若干同学的学业能力。请输出严格 JSON，不要输出任何额外文本。
+Your task is to evaluate the academic ability of several students. Output strict JSON only, no additional text.
 
-输出格式:
+Output format:
 {
   "evaluations": [
     {
-      "target_id": <目标学生ID>,
-      "ability_score": <0-1之间的能力评分，1表示最强>,
-      "uncertainty": <0-1之间的不确定性，1表示完全不确定>,
-      "rationale": "<≤40字的评价理由>"
+      "target_id": <target student ID>,
+      "ability_score": <ability score between 0-1, 1 means strongest>,
+      "uncertainty": <uncertainty between 0-1, 1 means completely uncertain>,
+      "rationale": "<evaluation rationale ≤40 characters>"
     }
   ]
 }
 
-注意:
-- ability_score 应基于你对该同学学业表现的主观感知
-- uncertainty 反映你对这个评估的确信程度
-- 如果你对某同学了解很少，uncertainty 应该较高
-- 理由要简洁，不超过40个字"""
+Notes:
+- ability_score should be based on your subjective perception of the student's academic performance
+- uncertainty reflects your confidence in this evaluation
+- If you know little about a student, uncertainty should be higher
+- Rationale should be concise, no more than 40 characters"""
 
-EVALUATION_USER_TEMPLATE = """【你的信息】
-- 学生ID: {agent_id}
-- 性格: {personality}
-- 焦虑水平: {worry_level}
+EVALUATION_USER_TEMPLATE = """[Your Information]
+- Student ID: {agent_id}
+- Personality: {personality}
+- Anxiety Level: {worry_level}
 
-【检索证据】
+[Retrieval Evidence]
 {rag_context}
 
-【当前信念摘要】
+[Current Belief Summary]
 {belief_summary}
 
-【任务】
-请评估以下同学的学业能力: {target_ids}
+[Task]
+Please evaluate the academic ability of the following students: {target_ids}
 
-请只输出JSON，不要有其他内容。"""
+Output JSON only, no other content."""
 
 
-TRUST_SYSTEM_PROMPT = """你是信息可信度评估器。根据发送者/接收者性格、上下文一致性，评估收到的评价信息的可信度。
+TRUST_SYSTEM_PROMPT = """You are an information trustworthiness evaluator. Evaluate the trustworthiness of received evaluation messages based on sender/receiver personality and contextual consistency.
 
-输出格式（只输出JSON）:
+Output format (JSON only):
 {
-  "trust_weight": <0-1之间的信任度，1表示完全信任>,
-  "uncertainty": <0-1之间的不确定性>
+  "trust_weight": <trust between 0-1, 1 means fully trusted>,
+  "uncertainty": <uncertainty between 0-1>
 }
 
-评估依据:
-- 发送者的性格特点（情绪稳定的人可能更可靠）
-- 评价与你当前认知的一致性
-- 评价的不确定性（高不确定性的评价可能需要打折）"""
+Evaluation criteria:
+- Sender's personality traits (emotionally stable people may be more reliable)
+- Consistency of the evaluation with your current beliefs
+- Uncertainty of the evaluation (high uncertainty evaluations may need discounting)"""
 
-TRUST_USER_TEMPLATE = """【你的信息】
-- 学生ID: {receiver_id}
-- 性格: {receiver_personality}
+TRUST_USER_TEMPLATE = """[Your Information]
+- Student ID: {receiver_id}
+- Personality: {receiver_personality}
 
-【收到的评价】
-- 发送者ID: {sender_id}
-- 发送者性格: {sender_personality}
-- 关于: 学生{target_id}
-- 能力评分: {ability_score}
-- 不确定性: {sender_uncertainty}
-- 理由: {rationale}
+[Received Evaluation]
+- Sender ID: {sender_id}
+- Sender Personality: {sender_personality}
+- About: Student {target_id}
+- Ability Score: {ability_score}
+- Uncertainty: {sender_uncertainty}
+- Rationale: {rationale}
 
-【你对学生{target_id}的当前认知】
-- 能力均值: {current_mu:.2f}
-- 不确定性: {current_sigma:.2f}
+[Your Current Belief about Student {target_id}]
+- Ability Mean: {current_mu:.2f}
+- Uncertainty: {current_sigma:.2f}
 
-请只输出JSON，不要有其他内容。"""
+Output JSON only, no other content."""
 
 
 # ============================================================
-# Agent 类
+# Agent Class
 # ============================================================
 
 class LLMAgent:
-    """LLM 驱动的学生智能体。"""
+    """LLM-driven student agent."""
     
     def __init__(
         self,
@@ -467,13 +454,11 @@ class LLMAgent:
         self.llm = llm_client
         self.class_data = class_data
         
-        # 初始化状态
         self.state = AgentState(
             agent_id=student.student_id,
             class_code=student.class_code,
         )
         
-        # 初始化对所有同学的信念（先验）
         for sid in class_data.student_ids:
             self.state.beliefs[sid] = BeliefState(target_id=sid)
     
@@ -482,7 +467,7 @@ class LLMAgent:
         return self.student.student_id
     
     def set_self_anchor(self, epoch: int):
-        """根据当前考试成绩设置自我真值锚点。"""
+        """Set self ground-truth anchor based on current exam score."""
         if epoch >= len(self.student.exam_class_ranks):
             return
         
@@ -490,7 +475,6 @@ class LLMAgent:
         if np.isnan(rank):
             return
         
-        # 将班级排名映射到 [0, 1] 的能力值（排名越低越强）
         n_students = self.class_data.size
         ability = 1.0 - (rank - 1) / max(n_students - 1, 1)
         
@@ -503,25 +487,22 @@ class LLMAgent:
         round_: int,
         use_llm_message: bool = True,
     ) -> List[EvaluationMessage]:
-        """生成对多个目标的评估（批处理）。"""
+        """Generate evaluations for multiple targets (batch processing)."""
         if not target_ids:
             return []
 
-        # 消融：No-LLM-Message -> 用简单随机/先验生成消息（不调用 LLM）
         if not use_llm_message:
             return self._generate_heuristic_evaluations(target_ids, epoch, round_)
         
-        # RAG 检索
         rag_result = self.rag.retrieve_for_evaluation(
             agent_id=self.agent_id,
             target_ids=target_ids,
             exam_idx=epoch,
         )
         
-        # 构造提示词
         personality_str = self._format_personality()
-        worry_map = {0: "从不担心", 1: "有时担心", 2: "经常担心", 3: "非常担心"}
-        worry_str = worry_map.get(self.student.worry_level, "未知")
+        worry_map = {0: "Never worry", 1: "Sometimes worry", 2: "Often worry", 3: "Very concerned"}
+        worry_str = worry_map.get(self.student.worry_level, "Unknown")
         
         belief_summary = self._format_belief_summary(target_ids)
         
@@ -539,10 +520,7 @@ class LLMAgent:
             {"role": "user", "content": user_message},
         ]
         
-        # 调用 LLM
         response = self.llm.chat(messages)
-        
-        # 解析响应
         evaluations = self._parse_evaluation_response(response, target_ids, epoch, round_)
         
         return evaluations
@@ -553,24 +531,21 @@ class LLMAgent:
         epoch: int,
         round_: int,
     ) -> List[EvaluationMessage]:
-        """在不调用 LLM 的情况下生成评估消息（用于消融）。"""
-        # 用可复现的 RNG（避免多线程下使用全局 RNG 造成竞争）
+        """Generate evaluation messages without calling LLM (for ablation)."""
         seed = (hash((self.agent_id, epoch, round_)) & 0xFFFFFFFF)
         rng = np.random.default_rng(seed)
 
         evaluations: List[EvaluationMessage] = []
         for tid in target_ids:
             belief = self.state.get_belief(tid)
-            # 围绕当前信念均值做小幅扰动，避免完全常数
             ability = float(np.clip(belief.mu + rng.normal(0.0, 0.05), 0, 1))
-            # 不确定性：与 belief.sigma 同量级，并略偏高
             unc = float(np.clip(min(1.0, belief.sigma + 0.15 + abs(rng.normal(0.0, 0.02))), 0, 1))
             evaluations.append(EvaluationMessage(
                 sender_id=self.agent_id,
                 target_id=tid,
                 ability_score=ability,
                 uncertainty=unc,
-                rationale="（消融）非LLM消息生成",
+                rationale="(Ablation) Non-LLM message generation",
                 timestamp=(epoch, round_),
             ))
         return evaluations
@@ -580,11 +555,9 @@ class LLMAgent:
         message: EvaluationMessage,
         sender: StudentRecord,
     ) -> TrustWeight:
-        """评估收到消息的可信度。"""
-        # 获取当前对目标的信念
+        """Evaluate trustworthiness of received message."""
         belief = self.state.get_belief(message.target_id)
         
-        # 构造提示词
         receiver_personality = self._format_personality()
         sender_personality = self._format_personality_for(sender)
         
@@ -606,10 +579,7 @@ class LLMAgent:
             {"role": "user", "content": user_message},
         ]
         
-        # 调用 LLM
         response = self.llm.chat(messages)
-        
-        # 解析响应
         trust = self._parse_trust_response(response, message)
         
         return trust
@@ -620,22 +590,17 @@ class LLMAgent:
         sender: StudentRecord,
         use_llm_trust: bool = True,
     ):
-        """接收消息并更新信念。"""
-        # 获取可信度权重
+        """Receive message and update belief."""
         if use_llm_trust:
             trust = self.evaluate_trust(message, sender)
             omega = trust.trust
         else:
-            # 简单的一致性函数
             belief = self.state.get_belief(message.target_id)
             diff = abs(belief.mu - message.ability_score)
             omega = max(0.1, 1 - diff)
         
-        # 计算观测精度
-        # τ = φ(ω, û)
         precision = self._compute_precision(omega, message.uncertainty)
         
-        # 贝叶斯更新
         self.state.update_belief(
             target_id=message.target_id,
             observation=message.ability_score,
@@ -643,43 +608,43 @@ class LLMAgent:
         )
     
     def _compute_precision(self, trust: float, uncertainty: float) -> float:
-        """计算观测精度。
+        """Compute observation precision.
         
         τ = φ(ω, û) = ω * (1 - û) / σ_base
         """
-        sigma_base = 0.3  # 基准标准差
+        sigma_base = 0.3
         precision = trust * (1 - uncertainty) / (sigma_base ** 2)
         return max(0.01, precision)
     
     def _format_personality(self) -> str:
-        """格式化自己的性格特点。"""
+        """Format own personality traits."""
         return self._format_personality_for(self.student)
     
     def _format_personality_for(self, student: StudentRecord) -> str:
-        """格式化指定学生的性格特点。"""
+        """Format personality traits for a student."""
         trait_map = {
-            "extroverted_lively": "外向活泼",
-            "introverted_quiet": "内向安静",
-            "emotionally_stable": "情绪稳定",
-            "emotionally_volatile": "情绪波动",
-            "optimistic_positive": "乐观积极",
-            "pessimistic": "悲观",
-            "impulsive": "冲动",
-            "thoughtful": "深思熟虑",
+            "extroverted_lively": "Extroverted and lively",
+            "introverted_quiet": "Introverted and quiet",
+            "emotionally_stable": "Emotionally stable",
+            "emotionally_volatile": "Emotionally volatile",
+            "optimistic_positive": "Optimistic and positive",
+            "pessimistic": "Pessimistic",
+            "impulsive": "Impulsive",
+            "thoughtful": "Thoughtful",
         }
         traits = []
-        for key, chinese in trait_map.items():
+        for key, english in trait_map.items():
             if student.personality.get(key, 0) == 1:
-                traits.append(chinese)
-        return "、".join(traits) if traits else "未知"
+                traits.append(english)
+        return ", ".join(traits) if traits else "Unknown"
     
     def _format_belief_summary(self, target_ids: List[int]) -> str:
-        """格式化对目标的当前信念摘要。"""
+        """Format current belief summary for targets."""
         lines = []
         for tid in target_ids:
             belief = self.state.get_belief(tid)
-            lines.append(f"- 学生{tid}: 能力估计={belief.mu:.2f}, 不确定性={belief.sigma:.2f}")
-        return "\n".join(lines) if lines else "无先前记录"
+            lines.append(f"- Student {tid}: Ability estimate={belief.mu:.2f}, Uncertainty={belief.sigma:.2f}")
+        return "\n".join(lines) if lines else "No previous records"
     
     def _parse_evaluation_response(
         self,
@@ -688,12 +653,10 @@ class LLMAgent:
         epoch: int,
         round_: int,
     ) -> List[EvaluationMessage]:
-        """解析 LLM 的评估响应。"""
+        """Parse LLM evaluation response."""
         evaluations = []
         
         try:
-            # 尝试解析 JSON
-            # 处理可能的 markdown 代码块
             response = response.strip()
             if response.startswith("```"):
                 response = response.split("```")[1]
@@ -702,11 +665,9 @@ class LLMAgent:
             
             data = json.loads(response)
             
-            # 兼容 LLM 返回 [{...}] 格式
             if isinstance(data, list):
                 data = {"evaluations": data}
             
-            # 确保 data 是 dict
             if not isinstance(data, dict):
                 data = {}
             
@@ -724,14 +685,13 @@ class LLMAgent:
                     timestamp=(epoch, round_),
                 ))
         except (json.JSONDecodeError, KeyError, TypeError):
-            # 解析失败，为每个目标生成默认评估
             for tid in target_ids:
                 evaluations.append(EvaluationMessage(
                     sender_id=self.agent_id,
                     target_id=tid,
                     ability_score=0.5,
-                    uncertainty=0.8,  # 高不确定性
-                    rationale="信息不足",
+                    uncertainty=0.8,
+                    rationale="Insufficient information",
                     timestamp=(epoch, round_),
                 ))
         
@@ -742,7 +702,7 @@ class LLMAgent:
         response: str,
         message: EvaluationMessage,
     ) -> TrustWeight:
-        """解析 LLM 的信任评估响应。"""
+        """Parse LLM trust evaluation response."""
         try:
             response = response.strip()
             if response.startswith("```"):
@@ -752,11 +712,9 @@ class LLMAgent:
             
             data = json.loads(response)
             
-            # 兼容 LLM 返回 [{...}] 格式
             if isinstance(data, list):
                 data = data[0] if data else {}
             
-            # 确保 data 是 dict
             if not isinstance(data, dict):
                 data = {}
             
@@ -768,7 +726,6 @@ class LLMAgent:
                 uncertainty=np.clip(float(data.get("uncertainty", 0.5)), 0, 1),
             )
         except (json.JSONDecodeError, KeyError, TypeError, AttributeError, ValueError):
-            # 默认信任度
             return TrustWeight(
                 receiver_id=self.agent_id,
                 sender_id=message.sender_id,

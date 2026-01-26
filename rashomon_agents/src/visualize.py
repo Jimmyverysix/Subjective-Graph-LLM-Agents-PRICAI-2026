@@ -1,4 +1,4 @@
-"""可视化模块 - 生成论文所需的图表。"""
+"""Visualization module - generate figures required for paper."""
 from __future__ import annotations
 
 import json
@@ -9,19 +9,17 @@ from typing import Dict, List, Any
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib
-matplotlib.use('Agg')  # 无头模式
+matplotlib.use('Agg')
 
-# 设置中文字体
 plt.rcParams['font.sans-serif'] = ['DejaVu Sans', 'Arial']
 plt.rcParams['axes.unicode_minus'] = False
 
 def load_results(output_dir: Path) -> Dict[str, Any]:
-    """加载实验结果。"""
+    """Load experimental results."""
     aggregate_file = output_dir / "seed_42" / "aggregate_metrics.json"
     with open(aggregate_file, "r", encoding="utf-8") as f:
         aggregate = json.load(f)
     
-    # 加载各班级结果
     class_metrics = {}
     for i in range(1, 13):
         class_file = output_dir / "seed_42" / f"class_{i}_metrics.json"
@@ -36,7 +34,7 @@ def load_results(output_dir: Path) -> Dict[str, Any]:
 
 
 def plot_dpae_trend(results: Dict, save_path: Path):
-    """绘制 DPAE 随 epoch 变化趋势。"""
+    """Plot DPAE trend over epochs."""
     aggregate = results["aggregate"]
     epochs = sorted([int(k) for k in aggregate["epochs"].keys()])
     
@@ -46,7 +44,6 @@ def plot_dpae_trend(results: Dict, save_path: Path):
     
     fig, ax1 = plt.subplots(figsize=(10, 6))
     
-    # DPAE (左轴)
     color1 = '#e74c3c'
     ax1.set_xlabel('Exam (Epoch)', fontsize=14)
     ax1.set_ylabel('DPAE (Error)', fontsize=14, color=color1)
@@ -56,7 +53,6 @@ def plot_dpae_trend(results: Dict, save_path: Path):
     ax1.tick_params(axis='y', labelcolor=color1)
     ax1.set_ylim(0, 0.2)
     
-    # Spearman (右轴)
     ax2 = ax1.twinx()
     color2 = '#3498db'
     ax2.set_ylabel('Spearman ρ (Correlation)', fontsize=14, color=color2)
@@ -65,10 +61,8 @@ def plot_dpae_trend(results: Dict, save_path: Path):
     ax2.tick_params(axis='y', labelcolor=color2)
     ax2.set_ylim(0.8, 1.0)
     
-    # 标题和图例
     plt.title('Epistemic Uncertainty Propagation Over Time\n(DPAE ↑ = Collective Misperception Increases)', fontsize=14)
     
-    # 合并图例
     lines1, labels1 = ax1.get_legend_handles_labels()
     lines2, labels2 = ax2.get_legend_handles_labels()
     ax1.legend(lines1 + lines2, labels1 + labels2, loc='center right')
@@ -83,7 +77,7 @@ def plot_dpae_trend(results: Dict, save_path: Path):
 
 
 def plot_uncertainty_trend(results: Dict, save_path: Path):
-    """绘制不确定性与 Top-k 准确率趋势。"""
+    """Plot uncertainty and Top-k accuracy trends."""
     aggregate = results["aggregate"]
     epochs = sorted([int(k) for k in aggregate["epochs"].keys()])
     
@@ -93,7 +87,6 @@ def plot_uncertainty_trend(results: Dict, save_path: Path):
     
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
     
-    # 不确定性趋势
     ax1.plot([e+1 for e in epochs], uncertainty, 'o-', color='#9b59b6', 
              linewidth=2, markersize=8)
     ax1.set_xlabel('Exam (Epoch)', fontsize=12)
@@ -103,7 +96,6 @@ def plot_uncertainty_trend(results: Dict, save_path: Path):
     ax1.grid(True, alpha=0.3)
     ax1.set_xticks([e+1 for e in epochs])
     
-    # Top-k 准确率
     ax2.plot([e+1 for e in epochs], top3, 'o-', color='#27ae60', 
              linewidth=2, markersize=8, label='Top-3 Accuracy')
     ax2.plot([e+1 for e in epochs], top5, 's--', color='#f39c12', 
@@ -123,13 +115,12 @@ def plot_uncertainty_trend(results: Dict, save_path: Path):
 
 
 def plot_class_comparison(results: Dict, save_path: Path):
-    """绘制各班级最终 DPAE 对比。"""
+    """Plot final DPAE comparison across classes."""
     class_metrics = results["classes"]
     
     classes = sorted(class_metrics.keys())
     final_dpae = []
     for c in classes:
-        # 最后一个 epoch 的 DPAE
         last_epoch = class_metrics[c][-1]
         final_dpae.append(last_epoch["dpae"])
     
@@ -147,7 +138,6 @@ def plot_class_comparison(results: Dict, save_path: Path):
     ax.legend()
     ax.grid(True, alpha=0.3, axis='y')
     
-    # 添加数值标签
     for bar, dpae in zip(bars, final_dpae):
         ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.005, 
                 f'{dpae:.3f}', ha='center', va='bottom', fontsize=9)
@@ -159,7 +149,7 @@ def plot_class_comparison(results: Dict, save_path: Path):
 
 
 def plot_dpae_by_class_over_time(results: Dict, save_path: Path):
-    """绘制各班级 DPAE 随时间变化（折线图）。"""
+    """Plot DPAE over time for each class (line plot)."""
     class_metrics = results["classes"]
     
     fig, ax = plt.subplots(figsize=(12, 7))
@@ -186,7 +176,7 @@ def plot_dpae_by_class_over_time(results: Dict, save_path: Path):
 
 
 def generate_summary_table(results: Dict) -> str:
-    """生成结果摘要表格（LaTeX 格式）。"""
+    """Generate summary table (LaTeX format)."""
     aggregate = results["aggregate"]
     epochs = sorted([int(k) for k in aggregate["epochs"].keys()])
     
@@ -218,9 +208,9 @@ def generate_summary_table(results: Dict) -> str:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="生成可视化图表")
-    parser.add_argument("--output_dir", required=True, help="实验输出目录")
-    parser.add_argument("--save_dir", default=None, help="图表保存目录")
+    parser = argparse.ArgumentParser(description="Generate visualization figures")
+    parser.add_argument("--output_dir", required=True, help="Experiment output directory")
+    parser.add_argument("--save_dir", default=None, help="Figure save directory")
     args = parser.parse_args()
     
     output_dir = Path(args.output_dir)
@@ -236,7 +226,6 @@ def main():
     plot_class_comparison(results, save_dir / "class_comparison.png")
     plot_dpae_by_class_over_time(results, save_dir / "dpae_by_class.png")
     
-    # 生成 LaTeX 表格
     latex_table = generate_summary_table(results)
     table_file = save_dir / "results_table.tex"
     with open(table_file, "w", encoding="utf-8") as f:

@@ -1,11 +1,11 @@
-"""主观图构建（Rashomon set）。
+"""Subjective graph construction (Rashomon set).
 
-每个学生 \(i\) 拥有自己的主观图 \(G_i=(V,E_i,\pi_i)\)，用于约束其可见邻域与信息可达性。
+Each student \(i\) has their own subjective graph \(G_i=(V,E_i,\pi_i)\), which constrains their visible neighborhood and information reachability.
 
-当前实现包含：
-- **显式好友边**：来自 `friend_1_id` ~ `friend_6_id`
-- **推断边（弱）**：来自 `most_popular_*_id`（作为“单向关注”的弱连边）
-- **焦虑噪声**：按 \(\alpha_i=g(worry\_about\_others)\) 做漏边/误连边
+Current implementation includes:
+- **Explicit friend edges**: From `friend_1_id` ~ `friend_6_id`
+- **Inferred edges (weak)**: From `most_popular_*_id` (as weak connections for "one-way attention")
+- **Anxiety noise**: Missing/incorrect edges based on \(\alpha_i=g(worry\_about\_others)\)
 """
 from __future__ import annotations
 
@@ -20,11 +20,11 @@ from .data_loader import StudentRecord, ClassData, DatasetSplit
 
 @dataclass
 class SubjectiveEdge:
-    """主观图中的边。"""
-    source: int  # 边的观察者（主观图的所有者）
-    target: int  # 被观察的节点
-    weight: float = 1.0  # 边的主观权重/可信度 π_i(e) ∈ [0, 1]
-    edge_type: str = "friend"  # 边类型：friend, inferred, noise
+    """Edge in subjective graph."""
+    source: int
+    target: int
+    weight: float = 1.0  # Subjective weight/credibility π_i(e) ∈ [0, 1]
+    edge_type: str = "friend"  # Edge type: friend, inferred, noise
     
     def __hash__(self):
         return hash((self.source, self.target))
@@ -37,36 +37,32 @@ class SubjectiveEdge:
 
 @dataclass
 class SubjectiveGraph:
-    """单个智能体的主观图 G_i = (V, E_i, π_i)。"""
-    owner_id: int  # 主观图的所有者
+    """Subjective graph for a single agent G_i = (V, E_i, π_i)."""
+    owner_id: int
     class_code: str
     
-    # 班级内所有节点（不变）
     nodes: Set[int] = field(default_factory=set)
     
-    # 主观边集合
     edges: Dict[int, SubjectiveEdge] = field(default_factory=dict)  # target_id -> edge
     
-    # 焦虑水平（0-3）
-    worry_level: int = 0
+    worry_level: int = 0  # Anxiety level (0-3)
     
-    # 噪声参数
     noise_alpha: float = 0.0  # α_i = g(worry_about_others)
     
     def get_neighbors(self) -> List[int]:
-        """获取主观邻居列表。"""
+        """Get subjective neighbor list."""
         return list(self.edges.keys())
     
     def get_neighbor_weights(self) -> Dict[int, float]:
-        """获取邻居及其权重。"""
+        """Get neighbors and their weights."""
         return {target: edge.weight for target, edge in self.edges.items()}
     
     def add_edge(self, target: int, weight: float = 1.0, edge_type: str = "friend"):
-        """添加主观边。"""
+        """Add subjective edge."""
         if target == self.owner_id:
-            return  # 不添加自环
+            return
         if target not in self.nodes:
-            return  # 目标不在班级内
+            return
         self.edges[target] = SubjectiveEdge(
             source=self.owner_id,
             target=target,
@@ -75,19 +71,19 @@ class SubjectiveGraph:
         )
     
     def remove_edge(self, target: int):
-        """移除主观边。"""
+        """Remove subjective edge."""
         if target in self.edges:
             del self.edges[target]
     
     @property
     def degree(self) -> int:
-        """主观度数。"""
+        """Subjective degree."""
         return len(self.edges)
 
 
 @dataclass
 class RashomonSet:
-    """Rashomon 集合：班级内所有智能体的主观图集合。
+    """Rashomon set: collection of subjective graphs for all agents in a class.
     
     R = {G_1, ..., G_N}
     """
@@ -106,13 +102,13 @@ class RashomonSet:
 
 
 def worry_to_alpha(worry_level: int, scale: float = 1.0) -> float:
-    """将焦虑等级映射到噪声强度 α_i。
+    """Map worry level to noise intensity α_i.
     
-    按 Proposal 规范：0/0.33/0.66/1.0 的线性映射
+    Linear mapping: 0/0.33/0.66/1.0
     
     Args:
         worry_level: 0=never, 1=sometimes, 2=often, 3=very_concerned
-        scale: 缩放因子（config 中的 worry_noise_scale）
+        scale: Scaling factor (worry_noise_scale in config)
     
     Returns:
         α_i ∈ [0, 1]
@@ -129,39 +125,35 @@ def apply_edge_noise(
     rng: np.random.Generator,
     epsilon: float = 0.1,
 ) -> Dict[int, SubjectiveEdge]:
-    """对边集合应用焦虑噪声。
+    """Apply anxiety noise to edge set.
     
-    按 Proposal 的公式：
+    According to proposal formula:
     P((i,k) ∈ E_i) = (1 - α_i) · 1[k ∈ N_i^friend] + α_i · ε
     
     Args:
-        edges: 原始边集合
-        all_classmates: 班级内所有同学 id
-        owner_id: 主观图所有者 id
-        alpha: 噪声强度
-        rng: 随机数生成器
-        epsilon: 小概率误连边参数
+        edges: Original edge set
+        all_classmates: All student IDs in class
+        owner_id: Subjective graph owner ID
+        alpha: Noise intensity
+        rng: Random number generator
+        epsilon: Small probability parameter for incorrect edges
     
     Returns:
-        噪声注入后的边集合
+        Edge set after noise injection
     """
     if alpha == 0:
         return edges
     
     noisy_edges = {}
     
-    # 1. 处理原始好友边：以 (1 - α) 的概率保留
     for target, edge in edges.items():
         if edge.edge_type == "friend":
             keep_prob = 1 - alpha
             if rng.random() < keep_prob:
                 noisy_edges[target] = edge
-            # 否则漏掉这条边（模拟焦虑导致的社交感知偏差）
         else:
-            # 非好友边（如 inferred）保持不变
             noisy_edges[target] = edge
     
-    # 2. 可能添加噪声边：以 α · ε 的概率对非邻居添加误连边
     non_neighbors = all_classmates - {owner_id} - set(noisy_edges.keys())
     noise_prob = alpha * epsilon
     
@@ -170,7 +162,7 @@ def apply_edge_noise(
             noisy_edges[candidate] = SubjectiveEdge(
                 source=owner_id,
                 target=candidate,
-                weight=0.3,  # 噪声边权重较低
+                weight=0.3,
                 edge_type="noise",
             )
     
@@ -183,21 +175,20 @@ def build_subjective_graph(
     worry_noise_scale: float = 1.0,
     rng: Optional[np.random.Generator] = None,
 ) -> SubjectiveGraph:
-    """为单个学生构建主观图。
+    """Build subjective graph for a single student.
     
     Args:
-        student: 学生记录
-        class_data: 班级数据
-        worry_noise_scale: 焦虑噪声缩放因子
-        rng: 随机数生成器
+        student: Student record
+        class_data: Class data
+        worry_noise_scale: Anxiety noise scaling factor
+        rng: Random number generator
     
     Returns:
-        该学生的主观图
+        Subjective graph for this student
     """
     if rng is None:
         rng = np.random.default_rng()
     
-    # 初始化主观图
     graph = SubjectiveGraph(
         owner_id=student.student_id,
         class_code=student.class_code,
@@ -206,18 +197,12 @@ def build_subjective_graph(
         noise_alpha=worry_to_alpha(student.worry_level, worry_noise_scale),
     )
     
-    # Step 1: 添加显式好友边
     for friend_id in student.friend_ids:
         if friend_id in class_data.students:
-            # 好友在同班内
             graph.add_edge(friend_id, weight=1.0, edge_type="friend")
     
-    # Step 2: 从 raw_row 中提取关系推断边（best_pair, most_popular）
-    # best_pair: 认为关系好的两人（如果自己认识其中一人，可能对另一人有间接印象）
-    # most_popular: 认为人缘好的人（可能有单向关注）
     raw = student.raw_row
     
-    # 提取 most_popular_*_id
     for i in range(1, 4):
         col = f"most_popular_{i}_id"
         if col in raw and raw[col] is not None:
@@ -225,12 +210,10 @@ def build_subjective_graph(
                 pop_id = int(raw[col])
                 if pop_id in class_data.students and pop_id != student.student_id:
                     if pop_id not in graph.edges:
-                        # 添加推断边（权重较低）
                         graph.add_edge(pop_id, weight=0.5, edge_type="inferred")
             except (ValueError, TypeError):
                 pass
     
-    # Step 3: 应用焦虑噪声
     if graph.noise_alpha > 0:
         graph.edges = apply_edge_noise(
             edges=graph.edges,
@@ -248,15 +231,15 @@ def build_rashomon_set(
     worry_noise_scale: float = 1.0,
     seed: int = 42,
 ) -> RashomonSet:
-    """为整个班级构建 Rashomon 集合。
+    """Build Rashomon set for entire class.
     
     Args:
-        class_data: 班级数据
-        worry_noise_scale: 焦虑噪声缩放因子
-        seed: 随机种子
+        class_data: Class data
+        worry_noise_scale: Anxiety noise scaling factor
+        seed: Random seed
     
     Returns:
-        班级的 Rashomon 集合
+        Rashomon set for the class
     """
     rng = np.random.default_rng(seed)
     
@@ -288,7 +271,7 @@ def build_objective_friend_rashomon_set(
     rng = np.random.default_rng(seed)
     all_ids = set(class_data.student_ids)
 
-    # 1) 用显式好友块构建对称邻接（undirected union）
+    
     adj: Dict[int, Set[int]] = {sid: set() for sid in all_ids}
     for sid, student in class_data.students.items():
         for fid in student.friend_ids:
@@ -318,15 +301,15 @@ def build_all_rashomon_sets(
     worry_noise_scale: float = 1.0,
     seed: int = 42,
 ) -> Dict[str, RashomonSet]:
-    """为所有班级构建 Rashomon 集合。
+    """Build Rashomon sets for all classes.
     
     Args:
-        split: 数据集划分
-        worry_noise_scale: 焦虑噪声缩放因子
-        seed: 随机种子
+        split: Dataset split
+        worry_noise_scale: Anxiety noise scaling factor
+        seed: Random seed
     
     Returns:
-        class_code -> RashomonSet 的字典
+        Dictionary mapping class_code -> RashomonSet
     """
     all_rashomon = {}
     
@@ -334,7 +317,7 @@ def build_all_rashomon_sets(
         rashomon = build_rashomon_set(
             class_data=class_data,
             worry_noise_scale=worry_noise_scale,
-            seed=seed + hash(class_code) % 10000,  # 每个班级不同的种子
+            seed=seed + hash(class_code) % 10000,
         )
         all_rashomon[class_code] = rashomon
     
@@ -345,7 +328,7 @@ def build_all_objective_friend_sets(
     split: DatasetSplit,
     seed: int = 42,
 ) -> Dict[str, RashomonSet]:
-    """为所有班级构建 No-Subjective-Graph 消融版本。"""
+    """Build No-Subjective-Graph ablation version for all classes."""
     all_rashomon: Dict[str, RashomonSet] = {}
     for class_code, class_data in split.full_temporal.items():
         rashomon = build_objective_friend_rashomon_set(
@@ -357,11 +340,10 @@ def build_all_objective_friend_sets(
 
 
 def compute_graph_stats(rashomon: RashomonSet) -> Dict:
-    """计算 Rashomon 集合的统计信息。"""
+    """Compute statistics for Rashomon set."""
     degrees = [g.degree for g in rashomon.graphs.values()]
     alphas = [g.noise_alpha for g in rashomon.graphs.values()]
     
-    # 边类型统计
     edge_types = {"friend": 0, "inferred": 0, "noise": 0}
     for g in rashomon.graphs.values():
         for edge in g.edges.values():

@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Rashomon Set Agents 主入口。
+"""Main entry point for Rashomon Set Agents.
 
-用法:
-    # Dry-run (仅一个班级，一个 epoch)
+Usage:
+    # Dry-run (single class, single epoch)
     python -m src.main --config config.yaml --dry-run
     
-    # 完整模拟（自动生成时间戳输出文件夹）
+    # Full simulation (auto-generates timestamped output folder)
     python -m src.main --config config.yaml
     
-    # 多种子实验
+    # Multi-seed experiments
     python -m src.main --config config.yaml --seeds 42,43,44,45,46
 """
 from __future__ import annotations
@@ -22,7 +22,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 
-# 加载 .env 文件
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -42,13 +41,12 @@ from .simulator import (
 
 
 def print_banner():
-    """打印启动横幅。"""
+    """Print startup banner."""
     banner = """
 ╔══════════════════════════════════════════════════════════════════╗
 ║                                                                  ║
 ║   Rashomon Set Agents: LLM-Driven Multi-Agent Simulation         ║
 ║   ──────────────────────────────────────────────────────────     ║
-║   UAI 2026 Proposal Implementation                               ║
 ║                                                                  ║
 ╚══════════════════════════════════════════════════════════════════╝
 """
@@ -65,23 +63,20 @@ def run_single_seed(
     rag_mode: RAGMode = RAGMode.SCOPED,
     use_subjective_graph: bool = True,
 ) -> Dict[str, Any]:
-    """运行单个种子的模拟。"""
+    """Run simulation for a single seed."""
     sim_config.seed = seed
     
-    # 加载数据
     csv_path = config["data"]["cleaned_csv"]
     split = load_and_filter(csv_path)
     
-    # 构建 Rashomon 集合（支持消融：No-Subjective-Graph）
     if use_subjective_graph:
         worry_noise_scale = config["simulation"].get("worry_noise_scale", 1.0)
         rashomon_sets = build_all_rashomon_sets(split, worry_noise_scale, seed=seed)
     else:
         rashomon_sets = build_all_objective_friend_sets(split, seed=seed)
     
-    # 创建 LLM 客户端（高并行度）
     api_key = os.environ.get(config["llm"]["api_key_env"])
-    max_workers = config.get("llm", {}).get("max_workers", 100)  # 默认 100 并行
+    max_workers = config.get("llm", {}).get("max_workers", 100)
     llm = LLMClient(
         base_url=config["llm"]["base_url"],
         model=config["llm"]["model"],
@@ -93,7 +88,6 @@ def run_single_seed(
     )
     
     if dry_run:
-        # Dry-run: 只运行一个班级
         test_class = list(split.full_temporal.keys())[0]
         class_data = split.full_temporal[test_class]
         rashomon = rashomon_sets[test_class]
@@ -123,7 +117,6 @@ def run_single_seed(
             "metrics": {test_class: [m.to_dict() for m in metrics]},
         }
     else:
-        # 完整模拟
         multi_sim = MultiClassSimulator(
             split=split,
             rashomon_sets=rashomon_sets,
@@ -136,7 +129,6 @@ def run_single_seed(
         results = multi_sim.run(verbose=verbose)
         elapsed = time.time() - start_time
         
-        # 保存结果
         seed_output = output_dir / f"seed_{seed}"
         multi_sim.save_results(results, seed_output)
         
@@ -151,7 +143,7 @@ def run_single_seed(
 
 
 def load_existing_seed_result(output_dir: Path, seed: int) -> Optional[Dict[str, Any]]:
-    """尝试加载已完成的 seed 结果（用于续跑）。"""
+    """Load existing seed result if available (for resuming)."""
     seed_dir = output_dir / f"seed_{seed}"
     agg_file = seed_dir / "aggregate_metrics.json"
     llm_file = seed_dir / "llm_stats.json"
@@ -171,7 +163,7 @@ def load_existing_seed_result(output_dir: Path, seed: int) -> Optional[Dict[str,
         
         return {
             "seed": seed,
-            "elapsed_seconds": 0,  # 已完成的不计时
+            "elapsed_seconds": 0,
             "llm_stats": llm_stats,
             "aggregate": aggregate,
         }
@@ -188,21 +180,20 @@ def run_multi_seed(
     rag_mode: RAGMode = RAGMode.SCOPED,
     use_subjective_graph: bool = True,
 ) -> Dict[str, Any]:
-    """运行多种子实验（支持续跑：跳过已完成的 seed）。"""
+    """Run multi-seed experiments (supports resuming: skips completed seeds)."""
     all_results = []
     
     for i, seed in enumerate(seeds):
-        # 检查是否已完成
         existing = load_existing_seed_result(output_dir, seed)
         if existing is not None:
             print(f"\n{'='*60}")
-            print(f"种子 {seed} ({i+1}/{len(seeds)}) - 已完成，跳过")
+            print(f"Seed {seed} ({i+1}/{len(seeds)}) - Already completed, skipping")
             print(f"{'='*60}")
             all_results.append(existing)
             continue
         
         print(f"\n{'='*60}")
-        print(f"种子 {seed} ({i+1}/{len(seeds)})")
+        print(f"Seed {seed} ({i+1}/{len(seeds)})")
         print(f"{'='*60}")
         
         result = run_single_seed(
@@ -214,10 +205,8 @@ def run_multi_seed(
         )
         all_results.append(result)
     
-    # 计算跨种子统计
     summary = compute_cross_seed_stats(all_results, sim_config.epochs)
     
-    # 保存汇总
     summary_file = output_dir / "multi_seed_summary.json"
     with open(summary_file, "w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2, ensure_ascii=False)
@@ -229,7 +218,7 @@ def compute_cross_seed_stats(
     results: List[Dict],
     n_epochs: int,
 ) -> Dict[str, Any]:
-    """计算跨种子的统计量。"""
+    """Compute cross-seed statistics."""
     summary = {
         "n_seeds": len(results),
         "seeds": [r["seed"] for r in results],
@@ -253,7 +242,7 @@ def compute_cross_seed_stats(
                 data = r["aggregate"]["epochs"][epoch]
             else:
                 continue
-            
+                
             epoch_dpaes.append(data.get("mean_dpae", 0))
             epoch_spearmans.append(data.get("mean_spearman", 0))
             epoch_uncertainties.append(data.get("mean_uncertainty", 0))
@@ -279,54 +268,50 @@ def compute_cross_seed_stats(
 
 
 def main():
-    """主函数。"""
+    """Main function."""
     parser = argparse.ArgumentParser(
         description="Rashomon Set Agents: LLM-Driven Multi-Agent Simulation",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-示例:
-  # Dry-run 测试
+Examples:
+  # Dry-run test
   python -m src.main --config config.yaml --dry-run
   
-  # 完整模拟（单种子）
+  # Full simulation (single seed)
   python -m src.main --config config.yaml --output output
   
-  # 多种子实验
+  # Multi-seed experiments
   python -m src.main --config config.yaml --seeds 42,43,44,45,46 --output output_multiseed
   
-  # 只运行一个 epoch（快速验证）
+  # Run single epoch (quick validation)
   python -m src.main --config config.yaml --epochs 1 --output output_quick
 """
     )
     
-    parser.add_argument("--config", default="config.yaml", help="配置文件路径")
-    parser.add_argument("--output", default=None, help="输出目录（默认使用时间戳）")
-    parser.add_argument("--resume-dir", default=None, help="续跑：指定已存在的输出目录（跳过已完成的 seed）")
-    parser.add_argument("--dry-run", action="store_true", help="只运行一个班级一个 epoch")
-    parser.add_argument("--seeds", type=str, default="42", help="随机种子（逗号分隔）")
-    parser.add_argument("--epochs", type=int, default=None, help="覆盖配置中的 epoch 数")
-    parser.add_argument("--rounds", type=int, default=None, help="覆盖配置中的每 epoch 轮数")
-    parser.add_argument("--workers", type=int, default=100, help="LLM 并行线程数")
-    parser.add_argument("--quiet", action="store_true", help="减少输出")
-    parser.add_argument("--no-rag", action="store_true", help="消融：禁用目标相关检索（仅 self + class_stats）")
-    parser.add_argument("--no-subjective-graph", action="store_true", help="消融：使用客观好友图（无推断边/无焦虑噪声）")
-    parser.add_argument("--no-llm-trust", action="store_true", help="消融：禁用 LLM 信任门控（使用一致性函数）")
-    parser.add_argument("--no-llm-message", action="store_true", help="消融：禁用 LLM 消息生成（使用启发式消息）")
+    parser.add_argument("--config", default="config.yaml", help="Configuration file path")
+    parser.add_argument("--output", default=None, help="Output directory (default: timestamp)")
+    parser.add_argument("--resume-dir", default=None, help="Resume: specify existing output directory (skip completed seeds)")
+    parser.add_argument("--dry-run", action="store_true", help="Run single class, single epoch")
+    parser.add_argument("--seeds", type=str, default="42", help="Random seeds (comma-separated)")
+    parser.add_argument("--epochs", type=int, default=None, help="Override number of epochs in config")
+    parser.add_argument("--rounds", type=int, default=None, help="Override rounds per epoch in config")
+    parser.add_argument("--workers", type=int, default=100, help="LLM parallel worker threads")
+    parser.add_argument("--quiet", action="store_true", help="Reduce output")
+    parser.add_argument("--no-rag", action="store_true", help="Ablation: disable target-related retrieval (only self + class_stats)")
+    parser.add_argument("--no-subjective-graph", action="store_true", help="Ablation: use objective friend graph (no inferred edges/no anxiety noise)")
+    parser.add_argument("--no-llm-trust", action="store_true", help="Ablation: disable LLM trust gating (use consistency function)")
+    parser.add_argument("--no-llm-message", action="store_true", help="Ablation: disable LLM message generation (use heuristic messages)")
     
     args = parser.parse_args()
     
     print_banner()
     
-    # 加载配置
     config = load_config(args.config)
     
-    # 设置并行线程数
     config.setdefault("llm", {})["max_workers"] = args.workers
     
-    # 解析种子
     seeds = [int(s.strip()) for s in args.seeds.split(",")]
     
-    # 创建模拟配置
     sim_config = SimulationConfig(
         epochs=args.epochs or config["simulation"]["epochs"],
         rounds_per_epoch=args.rounds or config["simulation"]["rounds_per_epoch"],
@@ -340,21 +325,18 @@ def main():
         sim_config.epochs = 1
         sim_config.rounds_per_epoch = 1
     
-    # 生成输出目录：output/<时间戳>[_<tag>]/
-    # 或使用 --resume-dir 续跑已存在的目录
     if args.resume_dir:
         output_dir = Path(args.resume_dir)
         if not output_dir.exists():
-            print(f"错误：--resume-dir 指定的目录不存在: {output_dir}")
+            print(f"Error: --resume-dir directory does not exist: {output_dir}")
             sys.exit(1)
-        print(f"[续跑模式] 使用已存在的输出目录: {output_dir}")
+        print(f"[Resume mode] Using existing output directory: {output_dir}")
     else:
         timestamp = datetime.now().strftime("%m-%d-%H-%M")
         run_name = f"{timestamp}_{args.output}" if args.output else timestamp
         output_dir = Path("output") / run_name
     
-    # 打印配置
-    print("配置:")
+    print("Configuration:")
     print(f"  Epochs: {sim_config.epochs}")
     print(f"  Rounds/Epoch: {sim_config.rounds_per_epoch}")
     print(f"  Max Partners: {sim_config.max_partners}")
@@ -368,10 +350,8 @@ def main():
         f"no_llm_trust={args.no_llm_trust}, no_llm_message={args.no_llm_message}"
     )
     
-    # 创建输出目录
     output_dir.mkdir(parents=True, exist_ok=True)
     
-    # 保存配置
     config_file = output_dir / "config_used.json"
     with open(config_file, "w", encoding="utf-8") as f:
         json.dump({
@@ -387,7 +367,6 @@ def main():
     
     verbose = not args.quiet
     
-    # 运行模拟
     start_time = time.time()
 
     rag_mode = RAGMode.NO_RAG if args.no_rag else RAGMode.SCOPED
@@ -401,8 +380,8 @@ def main():
             rag_mode=rag_mode,
             use_subjective_graph=use_subjective_graph,
         )
-        print(f"\n运行时间: {result['elapsed_seconds']:.2f} 秒")
-        print(f"LLM 统计: {result['llm_stats']}")
+        print(f"\nElapsed time: {result['elapsed_seconds']:.2f} seconds")
+        print(f"LLM stats: {result['llm_stats']}")
     elif len(seeds) == 1:
         result = run_single_seed(
             config, sim_config, seeds[0], output_dir,
@@ -413,13 +392,13 @@ def main():
         )
         
         print(f"\n{'='*60}")
-        print("运行完成")
+        print("Run completed")
         print(f"{'='*60}")
-        print(f"运行时间: {result['elapsed_seconds']:.2f} 秒")
-        print(f"LLM 统计: {result['llm_stats']}")
+        print(f"Elapsed time: {result['elapsed_seconds']:.2f} seconds")
+        print(f"LLM stats: {result['llm_stats']}")
         
         if "aggregate" in result:
-            print("\n聚合指标:")
+            print("\nAggregate metrics:")
             for epoch, data in result["aggregate"]["epochs"].items():
                 print(f"  Epoch {int(epoch)+1}: DPAE={data['mean_dpae']:.4f}, "
                       f"ρ={data['mean_spearman']:.4f}")
@@ -437,14 +416,14 @@ def main():
         total_time = time.time() - start_time
         
         print(f"\n{'='*60}")
-        print("多种子实验完成")
+        print("Multi-seed experiments completed")
         print(f"{'='*60}")
-        print(f"总种子数: {summary['n_seeds']}")
-        print(f"总运行时间: {total_time:.2f} 秒")
-        print(f"总 LLM 调用: {summary['total_llm_calls']}")
-        print(f"总成本估计: ${summary['total_cost_usd']:.4f}")
+        print(f"Total seeds: {summary['n_seeds']}")
+        print(f"Total elapsed time: {total_time:.2f} seconds")
+        print(f"Total LLM calls: {summary['total_llm_calls']}")
+        print(f"Total estimated cost: ${summary['total_cost_usd']:.4f}")
         
-        print("\n跨种子统计 (均值 ± 标准差):")
+        print("\nCross-seed statistics (mean ± std):")
         for epoch, data in summary["epochs"].items():
             print(f"  Epoch {int(epoch)+1}:")
             print(f"    DPAE: {data['dpae_mean']:.4f} ± {data['dpae_std']:.4f}")
@@ -452,7 +431,7 @@ def main():
             print(f"    Top-3 Accuracy: {data['top3_accuracy_mean']:.4f}")
             print(f"    Top-5 Accuracy: {data['top5_accuracy_mean']:.4f}")
     
-    print(f"\n结果已保存到: {output_dir}")
+    print(f"\nResults saved to: {output_dir}")
 
 
 if __name__ == "__main__":

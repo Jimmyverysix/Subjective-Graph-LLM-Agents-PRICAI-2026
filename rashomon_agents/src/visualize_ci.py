@@ -1,18 +1,5 @@
-"""UAI 风格统计可视化（bootstrap 95% CI + 配对差异）。
+"""Statistical visualization with bootstrap 95% CI and paired differences.
 
-核心改进：
-- 用 bootstrap over seeds 得到每个 epoch 的 95% CI（替代 std band）
-- 用共同 seeds 的配对差异（Δ 相对 Baseline）做 CI 与可视化
-- 成本用每个 seed 的 llm_stats.json 汇总（并在权衡图中加误差）
-
-用法：
-python -m src.visualize_uai_ci \
-  --baseline output/01-22-11-04_baseline_multiseed \
-  --no_rag output/01-22-11-05_ablation_no_rag \
-  --no_subj output/01-22-11-05_ablation_no_subjective_graph \
-  --no_trust output/01-22-11-05_ablation_no_llm_trust \
-  --outdir output/uai_figures_ci \
-  --bootstrap 20000
 """
 
 from __future__ import annotations
@@ -31,7 +18,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 
-def _style_uai():
+def _style_figures():
     plt.style.use("seaborn-v0_8-whitegrid")
     matplotlib.rcParams.update(
         {
@@ -149,7 +136,6 @@ def plot_trajectories_ci(settings: List[Setting], outdir: Path, n_boot: int, see
     T = len(epochs_dict)
     x = np.arange(1, T + 1)
 
-    # 说明：legend 放到图上方，避免与 x 轴标签重叠
     fig, axes = plt.subplots(1, 2, figsize=(11.6, 4.2), constrained_layout=False)
 
     # DPAE
@@ -343,14 +329,14 @@ def plot_cost_tradeoff_ci(settings: List[Setting], outdir: Path, n_boot: int, se
 
 
 def main():
-    parser = argparse.ArgumentParser(description="UAI 风格统计可视化：bootstrap CI + 配对差异")
-    parser.add_argument("--baseline", required=True, help="Baseline 实验输出目录（含 seed_*/aggregate_metrics.json）")
-    parser.add_argument("--no_rag", required=True, help="No-RAG 实验输出目录")
-    parser.add_argument("--no_subj", required=True, help="No-Subjective-Graph 实验输出目录")
-    parser.add_argument("--no_trust", required=True, help="No-LLM-Trust 实验输出目录")
-    parser.add_argument("--outdir", default="output/uai_figures_ci", help="输出目录")
-    parser.add_argument("--bootstrap", type=int, default=20000, help="bootstrap 次数")
-    parser.add_argument("--seed", type=int, default=0, help="bootstrap RNG seed")
+    parser = argparse.ArgumentParser(description="Statistical visualization: bootstrap CI + paired differences")
+    parser.add_argument("--baseline", required=True, help="Baseline experiment output directory (contains seed_*/aggregate_metrics.json)")
+    parser.add_argument("--no_rag", required=True, help="No-RAG experiment output directory")
+    parser.add_argument("--no_subj", required=True, help="No-Subjective-Graph experiment output directory")
+    parser.add_argument("--no_trust", required=True, help="No-LLM-Trust experiment output directory")
+    parser.add_argument("--outdir", default="output/figures_ci", help="Output directory")
+    parser.add_argument("--bootstrap", type=int, default=20000, help="Number of bootstrap iterations")
+    parser.add_argument("--seed", type=int, default=0, help="Bootstrap RNG seed")
     args = parser.parse_args()
 
     outdir = Path(args.outdir)

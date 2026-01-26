@@ -1,12 +1,12 @@
-"""RAG 检索引擎（本地实现）。
+"""RAG retrieval engine (local implementation).
 
-目标：在不引入外部向量库的前提下，实现“受限视野 + 可控噪声”的证据拼接，
-并为 LLM 提示词提供结构化上下文。
+Goal: Implement "limited-scope + controllable noise" evidence concatenation without external vector libraries,
+and provide structured context for LLM prompts.
 
-实现要点：
-- **Scope 硬约束**：self / friends / classmates / class_stats
-- **主观图约束**：classmates 与 friends 默认受 `SubjectiveGraph` 可见边限制
-- **焦虑噪声**：按 \(\alpha_i\) 对检索条目做删改/降置信度（当前实现仅做条目删改）
+Key implementation points:
+- **Scope hard constraints**: self / friends / classmates / class_stats
+- **Subjective graph constraints**: classmates and friends are constrained by `SubjectiveGraph` visible edges by default
+- **Anxiety noise**: Modify/ reduce confidence of retrieval items based on \(\alpha_i\) (current implementation only modifies items)
 """
 from __future__ import annotations
 
@@ -23,48 +23,46 @@ from .subjective_graph import SubjectiveGraph, RashomonSet
 
 
 class RetrievalScope(Enum):
-    """检索范围枚举。"""
-    SELF = "self"  # 仅自己的信息
-    FRIENDS = "friends"  # 好友块内的信息
-    CLASSMATES = "classmates"  # 同班同学（但受主观图约束）
-    CLASS_STATS = "class_stats"  # 班级聚合统计
+    """Retrieval scope enumeration."""
+    SELF = "self"
+    FRIENDS = "friends"
+    CLASSMATES = "classmates"
+    CLASS_STATS = "class_stats"
 
 
 class RAGMode(Enum):
-    """RAG 模式（用于消融实验）。"""
-    SCOPED = "scoped"       # 默认：受主观图/范围约束
-    NO_RAG = "no_rag"       # 消融：不提供目标相关检索（仅 self + class_stats）
+    """RAG mode (for ablation experiments)."""
+    SCOPED = "scoped"
+    NO_RAG = "no_rag"
 
 
 @dataclass
 class ScopeConstraint:
-    """检索范围约束。"""
+    """Retrieval scope constraints."""
     allowed_scopes: Set[RetrievalScope] = field(default_factory=lambda: {
         RetrievalScope.SELF,
         RetrievalScope.FRIENDS,
         RetrievalScope.CLASS_STATS,
     })
     
-    # 是否允许访问其他同学的详细信息（受主观图约束）
     allow_classmate_details: bool = False
     
-    # 可访问的字段类型
     allowed_field_types: Set[str] = field(default_factory=lambda: {
-        "personality",  # 性格特点
-        "hobby",  # 爱好
-        "friendship",  # 交友态度
-        "exam_rank",  # 考试排名（非原始成绩）
-        "class_stats",  # 班级统计
+        "personality",
+        "hobby",
+        "friendship",
+        "exam_rank",
+        "class_stats",
     })
 
 
 @dataclass
 class RetrievalItem:
-    """单条检索结果。"""
-    text: str  # 可直接拼接入提示词的证据片段
-    source_cols: List[str]  # 来源列名
-    confidence: float  # 置信度（用于后续噪声注入与权重调节）
-    source_type: str = "direct"  # direct / inferred / aggregated
+    """Single retrieval result."""
+    text: str
+    source_cols: List[str]
+    confidence: float
+    source_type: str = "direct"
     
     def to_dict(self) -> Dict:
         return {
@@ -77,7 +75,7 @@ class RetrievalItem:
 
 @dataclass
 class RetrievalResult:
-    """检索响应。"""
+    """Retrieval response."""
     agent_id: int
     query: str
     items: List[RetrievalItem] = field(default_factory=list)
@@ -90,53 +88,53 @@ class RetrievalResult:
         }
     
     def to_prompt_context(self) -> str:
-        """将检索结果转换为提示词上下文。"""
+        """Convert retrieval results to prompt context."""
         if not self.items:
-            return "【检索结果】无相关信息。"
+            return "[Retrieval Results] No relevant information."
         
-        lines = ["【检索结果】"]
+        lines = ["[Retrieval Results]"]
         for i, item in enumerate(self.items, 1):
-            lines.append(f"{i}. {item.text} (置信度: {item.confidence:.2f})")
+            lines.append(f"{i}. {item.text} (Confidence: {item.confidence:.2f})")
         return "\n".join(lines)
 
 
 def format_personality(student: StudentRecord) -> str:
-    """格式化性格特点为自然语言。"""
+    """Format personality traits to natural language."""
     traits = []
     trait_map = {
-        "extroverted_lively": "外向活泼",
-        "introverted_quiet": "内向安静",
-        "emotionally_stable": "情绪稳定",
-        "emotionally_volatile": "情绪波动",
-        "optimistic_positive": "乐观积极",
-        "pessimistic": "悲观",
-        "impulsive": "冲动",
-        "thoughtful": "深思熟虑",
+        "extroverted_lively": "Extroverted and lively",
+        "introverted_quiet": "Introverted and quiet",
+        "emotionally_stable": "Emotionally stable",
+        "emotionally_volatile": "Emotionally volatile",
+        "optimistic_positive": "Optimistic and positive",
+        "pessimistic": "Pessimistic",
+        "impulsive": "Impulsive",
+        "thoughtful": "Thoughtful",
     }
-    for key, chinese in trait_map.items():
+    for key, english in trait_map.items():
         if student.personality.get(key, 0) == 1:
-            traits.append(chinese)
-    return "、".join(traits) if traits else "未知"
+            traits.append(english)
+    return ", ".join(traits) if traits else "Unknown"
 
 
 def format_exam_rank(student: StudentRecord, exam_idx: int = -1) -> str:
-    """格式化考试排名信息。
+    """Format exam rank information.
     
     Args:
-        student: 学生记录
-        exam_idx: 考试索引（0-5），-1 表示最新
+        student: Student record
+        exam_idx: Exam index (0-5), -1 means latest
     """
     if exam_idx < 0:
         exam_idx = len(student.exam_class_ranks) - 1
     
     if exam_idx >= len(student.exam_class_ranks):
-        return "排名未知"
+        return "Rank unknown"
     
     rank = student.exam_class_ranks[exam_idx]
     if np.isnan(rank):
-        return "排名未知"
+        return "Rank unknown"
     
-    return f"第{exam_idx+1}次考试班级排名第{int(rank)}名"
+    return f"Exam {exam_idx+1} class rank: {int(rank)}"
 
 
 def format_student_summary(
@@ -145,23 +143,23 @@ def format_student_summary(
     include_rank: bool = True,
     exam_idx: int = -1,
 ) -> str:
-    """生成学生的摘要描述（用于 RAG 检索）。"""
-    parts = [f"学生{student.student_id}"]
+    """Generate student summary description (for RAG retrieval)."""
+    parts = [f"Student {student.student_id}"]
     
     if include_personality:
         traits = format_personality(student)
-        if traits != "未知":
-            parts.append(f"性格特点: {traits}")
+        if traits != "Unknown":
+            parts.append(f"Personality: {traits}")
     
     if include_rank:
         rank_info = format_exam_rank(student, exam_idx)
         parts.append(rank_info)
     
-    return "，".join(parts) + "。"
+    return ", ".join(parts) + "."
 
 
 def compute_class_stats(class_data: ClassData, exam_idx: int = -1) -> Dict[str, Any]:
-    """计算班级聚合统计。"""
+    """Compute class aggregate statistics."""
     ranks = []
     for student in class_data.students.values():
         if exam_idx < 0:
@@ -188,23 +186,21 @@ def inject_retrieval_noise(
     alpha: float,
     rng: np.random.Generator,
 ) -> List[RetrievalItem]:
-    """对检索结果注入噪声。
+    """Inject noise into retrieval results.
     
-    按 Proposal 规范，噪声可作用在：
-    (i) 检索结果的删改
-    (ii) 关系边的漏报/误报
-    (iii) 事实到叙事的情绪化改写
+    According to proposal specification, noise can act on:
+    (i) Modification of retrieval results
+    (ii) Missing/incorrect relationship edges
+    (iii) Emotional rewriting from facts to narratives
     
-    这里实现 (i)：以 α 概率删除部分检索结果
+    Here implements (i): Delete some retrieval results with probability α
     """
     if alpha == 0 or not items:
         return items
     
     noisy_items = []
     for item in items:
-        # 以 (1 - alpha * 0.5) 的概率保留
         if rng.random() > alpha * 0.5:
-            # 降低置信度
             noisy_item = RetrievalItem(
                 text=item.text,
                 source_cols=item.source_cols,
@@ -217,12 +213,12 @@ def inject_retrieval_noise(
 
 
 class RAGEngine:
-    """RAG 检索引擎。
+    """RAG retrieval engine.
     
-    核心功能：
-    - 为每个智能体提供受 scope 约束的检索接口
-    - 结合主观图限制可见范围
-    - 注入焦虑噪声
+    Core functions:
+    - Provide scope-constrained retrieval interface for each agent
+    - Combine with subjective graph to limit visible scope
+    - Inject anxiety noise
     """
     
     def __init__(
@@ -235,10 +231,10 @@ class RAGEngine:
     ):
         """
         Args:
-            split: 数据集划分
-            rashomon_sets: 所有班级的 Rashomon 集合
-            top_k: 默认返回的最大结果数
-            seed: 随机种子
+            split: Dataset split
+            rashomon_sets: Rashomon sets for all classes
+            top_k: Default maximum number of results to return
+            seed: Random seed
         """
         self.split = split
         self.rashomon_sets = rashomon_sets
@@ -246,10 +242,8 @@ class RAGEngine:
         self.rng = np.random.default_rng(seed)
         self.mode = mode
         
-        # 构建全局学生索引
         self.all_students = get_all_students(split)
         
-        # 学生 ID 到班级的映射
         self.student_to_class: Dict[int, str] = {}
         for class_code, class_data in split.full_temporal.items():
             for sid in class_data.student_ids:
@@ -263,14 +257,14 @@ class RAGEngine:
         top_k: Optional[int] = None,
         exam_idx: int = -1,
     ) -> RetrievalResult:
-        """执行检索。
+        """Execute retrieval.
         
         Args:
-            agent_id: 智能体 ID
-            query: 查询字符串（用于语义匹配，当前版本用关键词）
-            scope: 允许的检索范围列表
-            top_k: 返回的最大结果数
-            exam_idx: 考试时间点索引
+            agent_id: Agent ID
+            query: Query string (for semantic matching, current version uses keywords)
+            scope: List of allowed retrieval scopes
+            top_k: Maximum number of results to return
+            exam_idx: Exam time point index
         
         Returns:
             RetrievalResult
@@ -281,7 +275,7 @@ class RAGEngine:
         if scope is None:
             scope = ["self", "friends", "class_stats"]
         
-        # 获取智能体信息
+        
         if agent_id not in self.all_students:
             return RetrievalResult(agent_id=agent_id, query=query, items=[])
         
@@ -291,33 +285,33 @@ class RAGEngine:
         if class_code is None or class_code not in self.rashomon_sets:
             return RetrievalResult(agent_id=agent_id, query=query, items=[])
         
-        # 获取智能体的主观图（若使用 scoped 模式）
+        
         rashomon = self.rashomon_sets[class_code]
         subjective_graph = rashomon.graphs.get(agent_id)
         
         items: List[RetrievalItem] = []
 
-        # 消融：No-RAG -> 仅返回最小上下文（self + class_stats）
+        
         if self.mode == RAGMode.NO_RAG:
             scope = ["self", "class_stats"]
         
-        # 1. Self scope: 自己的信息
+        
         if "self" in scope:
             items.extend(self._retrieve_self(agent, exam_idx))
         
-        # 2. Friends scope: 好友信息（默认受主观图约束；但如果主观图缺失则退化为显式好友块）
+        
         if "friends" in scope:
             items.extend(self._retrieve_friends(
                 agent, subjective_graph, exam_idx
             ))
         
-        # 3. Classmates scope: 同班同学摘要（受主观图约束）
+        
         if "classmates" in scope:
             items.extend(self._retrieve_classmates(
                 agent, subjective_graph, exam_idx, query
             ))
         
-        # 4. Class stats scope: 班级聚合统计
+        
         if "class_stats" in scope:
             items.extend(self._retrieve_class_stats(agent, exam_idx))
         
@@ -327,7 +321,7 @@ class RAGEngine:
                 items, subjective_graph.noise_alpha, self.rng
             )
         
-        # 截断到 top_k
+        
         items = items[:top_k]
         
         return RetrievalResult(agent_id=agent_id, query=query, items=items)
@@ -335,33 +329,30 @@ class RAGEngine:
     def _retrieve_self(
         self, agent: StudentRecord, exam_idx: int
     ) -> List[RetrievalItem]:
-        """检索自己的信息。"""
+        """Retrieve own information."""
         items = []
         
-        # 性格特点
         traits = format_personality(agent)
-        if traits != "未知":
+        if traits != "Unknown":
             items.append(RetrievalItem(
-                text=f"我的性格特点: {traits}",
+                text=f"My personality traits: {traits}",
                 source_cols=["personality_*"],
                 confidence=1.0,
                 source_type="direct",
             ))
         
-        # 考试排名
         rank_info = format_exam_rank(agent, exam_idx)
-        if "未知" not in rank_info:
+        if "unknown" not in rank_info.lower():
             items.append(RetrievalItem(
-                text=f"我的{rank_info}",
+                text=f"My {rank_info}",
                 source_cols=[f"e0{exam_idx+1}_total_score_class_rank_*"],
                 confidence=1.0,
                 source_type="direct",
             ))
         
-        # 焦虑水平
-        worry_map = {0: "从不担心", 1: "有时担心", 2: "经常担心", 3: "非常担心"}
+        worry_map = {0: "Never worry", 1: "Sometimes worry", 2: "Often worry", 3: "Very concerned"}
         items.append(RetrievalItem(
-            text=f"我对他人看法的担心程度: {worry_map.get(agent.worry_level, '未知')}",
+            text=f"My level of concern about others' opinions: {worry_map.get(agent.worry_level, 'Unknown')}",
             source_cols=["worry_about_others_*"],
             confidence=1.0,
             source_type="direct",
@@ -375,7 +366,7 @@ class RAGEngine:
         graph: Optional[SubjectiveGraph],
         exam_idx: int,
     ) -> List[RetrievalItem]:
-        """检索好友信息（受主观图约束）。"""
+        """Retrieve friend information (constrained by subjective graph)."""
         items = []
         class_code = agent.class_code
         class_data = self.split.full_temporal.get(class_code)
@@ -383,7 +374,6 @@ class RAGEngine:
         if class_data is None:
             return items
 
-        # 优先：遍历主观图中的好友边（如果存在）
         if graph is not None:
             for target_id, edge in graph.edges.items():
                 if edge.edge_type != "friend":
@@ -395,20 +385,19 @@ class RAGEngine:
 
                 summary = format_student_summary(friend, exam_idx=exam_idx)
                 items.append(RetrievalItem(
-                    text=f"好友信息: {summary}",
+                    text=f"Friend information: {summary}",
                     source_cols=[f"friend_*_id={target_id}"],
                     confidence=edge.weight,
                     source_type="direct",
                 ))
         else:
-            # 退化：使用显式好友块
             for friend_id in agent.friend_ids:
                 friend = class_data.students.get(friend_id)
                 if friend is None:
                     continue
                 summary = format_student_summary(friend, exam_idx=exam_idx)
                 items.append(RetrievalItem(
-                    text=f"好友信息: {summary}",
+                    text=f"Friend information: {summary}",
                     source_cols=[f"friend_*_id={friend_id}"],
                     confidence=1.0,
                     source_type="direct",
@@ -423,7 +412,7 @@ class RAGEngine:
         exam_idx: int,
         query: str,
     ) -> List[RetrievalItem]:
-        """检索同班同学信息（受主观图约束）。"""
+        """Retrieve classmate information (constrained by subjective graph)."""
         items = []
         class_code = agent.class_code
         class_data = self.split.full_temporal.get(class_code)
@@ -431,15 +420,12 @@ class RAGEngine:
         if class_data is None:
             return items
         
-        # 默认：只能看到主观图中的邻居；若主观图缺失则不返回同学信息
         if graph is None:
             return items
 
         visible_ids = set(graph.edges.keys())
         
-        # 解析查询中的目标学生 ID
         target_ids = set()
-        # 简单的 ID 提取：查找数字
         for match in re.finditer(r'\b(\d+)\b', query):
             try:
                 tid = int(match.group(1))
@@ -448,7 +434,6 @@ class RAGEngine:
             except ValueError:
                 pass
         
-        # 如果查询中没有具体 ID，返回可见邻居的摘要
         if not target_ids:
             target_ids = visible_ids
         
@@ -465,7 +450,7 @@ class RAGEngine:
             
             summary = format_student_summary(classmate, exam_idx=exam_idx)
             items.append(RetrievalItem(
-                text=f"同学信息: {summary}",
+                text=f"Classmate information: {summary}",
                 source_cols=[f"student_id={target_id}"],
                 confidence=confidence,
                 source_type="inferred" if edge and edge.edge_type != "friend" else "direct",
@@ -476,7 +461,7 @@ class RAGEngine:
     def _retrieve_class_stats(
         self, agent: StudentRecord, exam_idx: int
     ) -> List[RetrievalItem]:
-        """检索班级聚合统计。"""
+        """Retrieve class aggregate statistics."""
         items = []
         class_code = agent.class_code
         class_data = self.split.full_temporal.get(class_code)
@@ -488,9 +473,9 @@ class RAGEngine:
         
         if stats["n_students"] > 0:
             items.append(RetrievalItem(
-                text=f"班级第{exam_idx+1 if exam_idx >= 0 else 6}次考试统计: "
-                     f"共{stats['n_students']}人参考, "
-                     f"排名标准差{stats['std_rank']:.1f}",
+                text=f"Class Exam {exam_idx+1 if exam_idx >= 0 else 6} Statistics: "
+                     f"{stats['n_students']} students, "
+                     f"rank std: {stats['std_rank']:.1f}",
                 source_cols=["class_aggregate"],
                 confidence=0.9,
                 source_type="aggregated",
@@ -504,20 +489,19 @@ class RAGEngine:
         target_ids: List[int],
         exam_idx: int = -1,
     ) -> RetrievalResult:
-        """为评估任务检索信息。
+        """Retrieve information for evaluation task.
         
-        这是批处理评估的专用接口：智能体需要评估多个目标的能力。
+        This is a dedicated interface for batch evaluation: agents need to evaluate the ability of multiple targets.
         
         Args:
-            agent_id: 评估者 ID
-            target_ids: 被评估者 ID 列表
-            exam_idx: 考试时间点索引
+            agent_id: Evaluator ID
+            target_ids: List of target IDs to evaluate
+            exam_idx: Exam time point index
         
         Returns:
-            RetrievalResult，包含评估所需的上下文
+            RetrievalResult containing context needed for evaluation
         """
-        # 构造包含目标 ID 的查询
-        query = f"评估学生 {','.join(map(str, target_ids))} 的学业能力"
+        query = f"Evaluate academic ability of students {','.join(map(str, target_ids))}"
         
         result = self.retrieve(
             agent_id=agent_id,
@@ -529,6 +513,3 @@ class RAGEngine:
         return result
 
 
-#
-# 说明：
-# - 端到端运行/测试请使用 `python -m src.main --dry-run`；这里不再保留模块级脚手架入口。

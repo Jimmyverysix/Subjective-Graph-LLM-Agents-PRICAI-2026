@@ -30,7 +30,7 @@ from .data_loader import load_and_filter, load_config, DatasetSplit, ClassData
 
 
 def compute_dpae(predicted_ranks: Dict[int, int], true_ranks: Dict[int, int]) -> Tuple[float, float]:
-    """计算 DPAE 和 Spearman 相关。"""
+    """Compute DPAE and Spearman correlation."""
     common_ids = set(predicted_ranks.keys()) & set(true_ranks.keys())
     if len(common_ids) < 2:
         return 0.5, 0.0
@@ -47,7 +47,7 @@ def compute_dpae(predicted_ranks: Dict[int, int], true_ranks: Dict[int, int]) ->
 
 
 def get_true_ranks(class_data: ClassData, epoch: int) -> Dict[int, int]:
-    """获取真实班级排名。"""
+    """Get true class ranks."""
     ranks = {}
     for sid, student in class_data.students.items():
         if epoch < len(student.exam_class_ranks):
@@ -58,7 +58,7 @@ def get_true_ranks(class_data: ClassData, epoch: int) -> Dict[int, int]:
 
 
 def compute_top_k_accuracy(predicted_ranks: Dict[int, int], true_ranks: Dict[int, int], k: int) -> float:
-    """计算 Top-k 识别率。"""
+    """Compute Top-k accuracy."""
     common_ids = set(predicted_ranks.keys()) & set(true_ranks.keys())
     if len(common_ids) < k:
         return 0.0
@@ -70,15 +70,14 @@ def compute_top_k_accuracy(predicted_ranks: Dict[int, int], true_ranks: Dict[int
 
 
 # ============================================================
-# 基线 1: Random Baseline
+# Baseline 1: Random Baseline
 # ============================================================
 
 def random_baseline(class_data: ClassData, epoch: int, seed: int = 42) -> Dict[str, float]:
-    """随机排名基线。"""
+    """Random ranking baseline."""
     rng = np.random.default_rng(seed)
     true_ranks = get_true_ranks(class_data, epoch)
     
-    # 随机排名
     student_ids = list(true_ranks.keys())
     random_order = rng.permutation(student_ids)
     predicted_ranks = {sid: i + 1 for i, sid in enumerate(random_order)}
@@ -91,13 +90,13 @@ def random_baseline(class_data: ClassData, epoch: int, seed: int = 42) -> Dict[s
 
 
 # ============================================================
-# 基线 2: Self-Only (No Social Interaction)
+# Baseline 2: Self-Only (No Social Interaction)
 # ============================================================
 
 def self_only_baseline(class_data: ClassData, epoch: int) -> Dict[str, float]:
-    """Self-Only 基线：无社交交互、无外部可用信号。
+    """Self-Only baseline: no social interaction, no external available signals.
 
-    实现：所有人的预测得分都接近同一先验（0.5），用极小噪声打破并列，从而得到近似随机的排序。
+    Implementation: All predicted scores are close to the same prior (0.5), with minimal noise to break ties, resulting in approximately random ordering.
     """
     true_ranks = get_true_ranks(class_data, epoch)
     rng = np.random.default_rng(42)
@@ -113,11 +112,11 @@ def self_only_baseline(class_data: ClassData, epoch: int) -> Dict[str, float]:
 
 
 # ============================================================
-# 基线 4 & 5: ML 方法（MLP, Linear Regression）
+# Baseline 4 & 5: ML Methods (MLP, Linear Regression)
 # ============================================================
 
 def ml_baseline(split: DatasetSplit, epoch: int, method: str = "mlp") -> Dict[str, float]:
-    """ML 方法：用问卷特征预测排名。"""
+    """ML method: predict ranking using questionnaire features."""
     from sklearn.linear_model import Ridge
     from sklearn.neural_network import MLPRegressor
     from sklearn.preprocessing import StandardScaler
@@ -135,14 +134,12 @@ def ml_baseline(split: DatasetSplit, epoch: int, method: str = "mlp") -> Dict[st
             if sid not in true_ranks:
                 continue
             
-            # 特征：性格 + 焦虑水平 + 好友数量
             features = []
             for key, val in student.personality.items():
                 features.append(float(val))
-            features.append(float(student.worry_level) / 3.0)  # 归一化
-            features.append(float(len(student.friend_ids)) / 6.0)  # 归一化
+            features.append(float(student.worry_level) / 3.0)
+            features.append(float(len(student.friend_ids)) / 6.0)
             
-            # 目标：归一化排名
             target = 1.0 - (true_ranks[sid] - 1) / max(n - 1, 1)
             
             all_features.append(features)
@@ -152,20 +149,16 @@ def ml_baseline(split: DatasetSplit, epoch: int, method: str = "mlp") -> Dict[st
     X = np.array(all_features)
     y = np.array(all_targets)
     
-    # 标准化
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
     
-    # 选择模型
     if method == "mlp":
         model = MLPRegressor(hidden_layer_sizes=(32, 16), max_iter=500, random_state=42)
     else:
         model = Ridge(alpha=1.0)
     
-    # 交叉验证预测
     y_pred = cross_val_predict(model, X_scaled, y, cv=5)
     
-    # 按班级计算指标
     class_metrics = defaultdict(list)
     for i, (class_code, sid) in enumerate(all_sids):
         class_metrics[class_code].append((sid, y_pred[i], y[i]))
@@ -175,7 +168,6 @@ def ml_baseline(split: DatasetSplit, epoch: int, method: str = "mlp") -> Dict[st
     all_acc3 = []
     
     for class_code, data in class_metrics.items():
-        # 排名
         sorted_by_pred = sorted(data, key=lambda x: -x[1])
         predicted_ranks = {item[0]: i + 1 for i, item in enumerate(sorted_by_pred)}
         
@@ -200,12 +192,12 @@ def ml_baseline(split: DatasetSplit, epoch: int, method: str = "mlp") -> Dict[st
 def _extract_features_and_targets(
     split: DatasetSplit, epoch: int
 ) -> Tuple[np.ndarray, np.ndarray, List[Tuple[str, int]], Dict[str, List[int]]]:
-    """抽取全局特征矩阵 X、目标 y，以及索引映射。
+    """Extract global feature matrix X, targets y, and index mappings.
 
-    - X: (N, F) 个体特征（问卷性格 + worry + friend_count）
-    - y: (N,) 归一化能力（由当期真实班级 rank 映射到 [0,1]）
-    - idx_to_node: 全局索引 -> (class_code, sid)
-    - class_to_indices: class_code -> [全局索引列表]
+    - X: (N, F) Individual features (questionnaire personality + worry + friend_count)
+    - y: (N,) Normalized ability (mapped from current true class rank to [0,1])
+    - idx_to_node: Global index -> (class_code, sid)
+    - class_to_indices: class_code -> [list of global indices]
     """
     X_rows: List[List[float]] = []
     y_rows: List[float] = []
@@ -228,7 +220,6 @@ def _extract_features_and_targets(
             features.append(float(student.worry_level) / 3.0)
             features.append(float(len(student.friend_ids)) / 6.0)
 
-            # 归一化能力（rank=1 -> 1.0，rank=n -> 0.0）
             target = 1.0 - (true_ranks[sid] - 1) / max(n - 1, 1)
 
             idx = len(idx_to_node)
@@ -243,22 +234,20 @@ def _extract_features_and_targets(
 
 
 def _build_block_diagonal_adjacency(split: DatasetSplit, idx_to_node: List[Tuple[str, int]]) -> sp.csr_matrix:
-    """用 survey 好友块构图：仅一阶邻居（Rashomon view），跨班级不连边。
+    """Build graph from survey friend blocks: only first-order neighbors (Rashomon view), no cross-class edges.
 
-    这里构造一个全局稀疏邻接矩阵 A（有向），A[i,j]=1 表示 i 认为 j 是好友（可见的一阶邻居）。
+    Constructs a global sparse adjacency matrix A (directed), where A[i,j]=1 means i considers j a friend (visible first-order neighbor).
     """
     node_to_idx = {node: i for i, node in enumerate(idx_to_node)}
     N = len(idx_to_node)
     rows: List[int] = []
     cols: List[int] = []
 
-    # 自环
     for i in range(N):
         rows.append(i)
         cols.append(i)
 
     for class_code, class_data in split.full_temporal.items():
-        # 收集该班可用学生集合（仅限 idx_to_node 里出现的）
         class_sids = {sid for c, sid in idx_to_node if c == class_code}
         if not class_sids:
             continue
@@ -280,7 +269,7 @@ def _build_block_diagonal_adjacency(split: DatasetSplit, idx_to_node: List[Tuple
 
 
 def _row_normalize(A: sp.csr_matrix) -> sp.csr_matrix:
-    """行归一化（有向传播）：D^{-1} A。"""
+    """Row normalization (directed propagation): D^{-1} A."""
     row_sum = np.asarray(A.sum(axis=1)).reshape(-1)
     row_sum[row_sum == 0] = 1.0
     inv = 1.0 / row_sum
@@ -295,9 +284,9 @@ def sgc_gcn_like_baseline(
     alpha: float = 1.0,
     cv: int = 5,
 ) -> Dict[str, float]:
-    """SGC/GCN-like：仅一阶邻接传播的线性图卷积基线（无需深度学习依赖）。
+    """SGC/GCN-like: linear graph convolution baseline with only first-order adjacency propagation (no deep learning dependencies).
 
-    做法：X_k = (D^{-1}A)^k X，然后用 Ridge 在 X_k 上做回归（5-fold CV 预测）。
+    Method: X_k = (D^{-1}A)^k X, then Ridge regression on X_k (5-fold CV prediction).
     """
     from sklearn.linear_model import Ridge
     from sklearn.preprocessing import StandardScaler
@@ -320,7 +309,6 @@ def sgc_gcn_like_baseline(
     model = Ridge(alpha=alpha)
     y_pred = cross_val_predict(model, Xs, y, cv=cv)
 
-    # 按班级计算指标（与 ml_baseline 对齐）
     all_dpae, all_rho, all_acc3 = [], [], []
     for class_code, indices in class_to_indices.items():
         if len(indices) < 3:
@@ -352,10 +340,10 @@ def gat_like_baseline(
     alpha: float = 1.0,
     cv: int = 5,
 ) -> Dict[str, float]:
-    """GAT-like：一阶邻居注意力聚合 + Ridge（无 PyG 依赖）。
+    """GAT-like: first-order neighbor attention aggregation + Ridge (no PyG dependency).
 
-    仅使用 survey friend_ids 作为一阶邻居；注意力权重由特征余弦相似度计算：
-    w_ij = softmax( cos(x_i, x_j) / T )，并对邻居特征做加权和得到 x'_i。
+    Only uses survey friend_ids as first-order neighbors; attention weights computed from feature cosine similarity:
+    w_ij = softmax( cos(x_i, x_j) / T ), and weighted sum of neighbor features to get x'_i.
     """
     from sklearn.linear_model import Ridge
     from sklearn.preprocessing import StandardScaler
@@ -365,7 +353,6 @@ def gat_like_baseline(
     if X.shape[0] == 0:
         return {"dpae": 0.5, "spearman_rho": 0.0, "acc_3": 0.0, "dpae_std": 0.0}
 
-    # 构造邻接列表（全局索引）
     node_to_idx = {node: i for i, node in enumerate(idx_to_node)}
     neighbors: List[List[int]] = [[] for _ in range(len(idx_to_node))]
 
@@ -379,13 +366,12 @@ def gat_like_baseline(
                 continue
 
             src = node_to_idx[(class_code, sid)]
-            nbs = [src]  # include self-loop
+            nbs = [src]
             for fid in student.friend_ids:
                 if fid in class_sids:
                     nbs.append(node_to_idx[(class_code, fid)])
             neighbors[src] = nbs
 
-    # 注意力聚合（按节点计算）
     eps = 1e-9
     X_norm = X / (np.linalg.norm(X, axis=1, keepdims=True) + eps)
     X_att = np.zeros_like(X, dtype=float)
@@ -395,10 +381,9 @@ def gat_like_baseline(
         if not nbs:
             X_att[i] = X[i]
             continue
-        # cosine similarities with neighbors
-        sims = (X_norm[i] @ X_norm[nbs].T).astype(float)  # shape (len(nbs),)
+        sims = (X_norm[i] @ X_norm[nbs].T).astype(float)
         logits = sims / T
-        logits = logits - np.max(logits)  # stability
+        logits = logits - np.max(logits)
         w = np.exp(logits)
         w = w / (np.sum(w) + eps)
         X_att[i] = (w.reshape(-1, 1) * X[nbs]).sum(axis=0)
@@ -439,17 +424,17 @@ def degroot_dynamics_baseline(
     seed: int = 42,
     self_signal_noise_std: float = 0.0,
 ) -> Dict[str, float]:
-    r"""DeGroot 意见动力学（向量化“对每个 target 的意见扩散”）。
+    r"""DeGroot opinion dynamics (vectorized "opinion diffusion for each target").
 
-    每个节点 i 对每个目标 k 持有一个标量信念 b_{i,k}。
-    初始化：
-    - b_{i,k}=0.5（无信息先验）
-    - b_{k,k}=s_k（k 对自己的私有信号）；s_k 来自当期真实能力（由 rank 映射）并可加高斯噪声
-    更新：
-    - b_{i,k}^{t+1} = Σ_{j∈N(i)∪{i}} w_{ij} b_{j,k}^{t}，其中 w 由一阶邻居均分（行随机矩阵）
-    输出：
-    - 用群体平均 \bar{b}_{\cdot,k} 作为对目标 k 的群体估计并排序
-    - 额外输出 diversity_final（最终时刻 b_{i,k} 在 i 上的平均方差）
+    Each node i holds a scalar belief b_{i,k} for each target k.
+    Initialization:
+    - b_{i,k}=0.5 (no-information prior)
+    - b_{k,k}=s_k (k's private signal about itself); s_k comes from current true ability (mapped from rank) and can add Gaussian noise
+    Update:
+    - b_{i,k}^{t+1} = Σ_{j∈N(i)∪{i}} w_{ij} b_{j,k}^{t}, where w is evenly divided among first-order neighbors (row-stochastic matrix)
+    Output:
+    - Use group mean \bar{b}_{\cdot,k} as group estimate for target k and rank
+    - Additional output diversity_final (average variance of b_{i,k} over i at final time)
     """
     rng = np.random.default_rng(seed)
     true_ranks = get_true_ranks(class_data, epoch)
@@ -458,13 +443,11 @@ def degroot_dynamics_baseline(
     if n < 3:
         return {"dpae": 0.5, "spearman_rho": 0.0, "acc_3": 0.0, "diversity_final": 0.0}
 
-    # 真实能力信号（rank -> [0,1]）
     abilities = {sid: 1.0 - (true_ranks[sid] - 1) / max(n - 1, 1) for sid in student_ids}
     if self_signal_noise_std > 0:
         for sid in student_ids:
             abilities[sid] = float(np.clip(abilities[sid] + rng.normal(0.0, self_signal_noise_std), 0.0, 1.0))
 
-    # 邻居（仅 survey 1-hop），并包含 self-loop
     neighbor_map: Dict[int, List[int]] = {}
     sid_set = set(student_ids)
     for sid in student_ids:
@@ -475,7 +458,6 @@ def degroot_dynamics_baseline(
                     nbs.append(fid)
         neighbor_map[sid] = nbs
 
-    # W: 行随机矩阵（按邻居均分）
     sid_to_idx = {sid: i for i, sid in enumerate(student_ids)}
     rows, cols, data = [], [], []
     for sid in student_ids:
@@ -489,29 +471,26 @@ def degroot_dynamics_baseline(
             data.append(w)
     W = sp.csr_matrix((np.asarray(data, dtype=float), (rows, cols)), shape=(n, n))
 
-    # B: (n_agents, n_targets) in same index space; initialize 0.5 everywhere, diagonal is self signal
     B = np.full((n, n), 0.5, dtype=float)
     for sid in student_ids:
         i = sid_to_idx[sid]
         B[i, i] = abilities[sid]
 
-    # iterate
     for _ in range(max(1, int(n_steps))):
         B = (W @ B).astype(float)
 
-    # group estimate per target = mean over agents (rows)
-    group_est = B.mean(axis=0)  # shape (n,)
+    group_est = B.mean(axis=0)
     sorted_idx = np.argsort(-group_est)
     predicted_ranks = {student_ids[idx]: r + 1 for r, idx in enumerate(sorted_idx)}
 
     dpae, rho = compute_dpae(predicted_ranks, true_ranks)
     acc3 = compute_top_k_accuracy(predicted_ranks, true_ranks, 3)
-    diversity_final = float(B.var(axis=0).mean())  # avg var across targets
+    diversity_final = float(B.var(axis=0).mean())
     return {"dpae": float(dpae), "spearman_rho": float(rho), "acc_3": float(acc3), "diversity_final": diversity_final}
 
 
 def _parse_int_list(spec: str) -> List[int]:
-    """解析 '1,5,10,30' 形式的整数列表。"""
+    """Parse integer list in '1,5,10,30' format."""
     if not spec:
         return []
     items = []
@@ -584,7 +563,6 @@ def run_degroot_sweep(
         for row in sweep_rows:
             writer.writerow(row)
 
-    # plot
     try:
         import matplotlib.pyplot as plt
 
@@ -615,14 +593,13 @@ def run_degroot_sweep(
         fig.savefig(fig_path, dpi=200)
         plt.close(fig)
     except Exception:
-        # 画图失败不影响主流程（例如未安装 matplotlib）
         pass
 
     return sweep_rows
 
 
 # ============================================================
-# 主函数
+# Main Function
 # ============================================================
 
 def run_all_baselines(
@@ -634,7 +611,7 @@ def run_all_baselines(
     degroot_steps: int = 30,
     degroot_noise_std: float = 0.0,
 ) -> Dict[str, Any]:
-    """运行所有基线实验。"""
+    """Run all baseline experiments."""
     results = {
         "random": [],
         "self_only": [],
@@ -651,7 +628,6 @@ def run_all_baselines(
     for epoch in epochs:
         print(f"\n=== Epoch {epoch + 1} ===")
         
-        # Random baseline (多次采样)
         random_results = []
         for seed in seeds:
             for class_code, class_data in split.full_temporal.items():
@@ -715,7 +691,6 @@ def run_all_baselines(
             print(f"  GAT-like(1-hop): DPAE={gat['dpae']:.3f}±{gat['dpae_std']:.3f}")
 
         if include_degroot:
-            # DeGroot：按班级计算并在班级上取均值
             degroot_metrics = []
             for seed in seeds:
                 for class_code, class_data in split.full_temporal.items():
@@ -745,52 +720,48 @@ def run_all_baselines(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="外部基线对比实验")
-    parser.add_argument("--config", default="config.yaml", help="配置文件路径")
-    parser.add_argument("--output", default="output/baselines", help="输出目录")
-    parser.add_argument("--no-graph", action="store_true", help="禁用图学习基线（SGC/GAT-like）")
-    parser.add_argument("--no-degroot", action="store_true", help="禁用 DeGroot 动力学基线")
-    parser.add_argument("--degroot-steps", type=int, default=30, help="DeGroot 迭代步数")
-    parser.add_argument("--degroot-noise-std", type=float, default=0.0, help="DeGroot 私有信号噪声 std")
+    parser = argparse.ArgumentParser(description="External baseline comparison experiments")
+    parser.add_argument("--config", default="config.yaml", help="Configuration file path")
+    parser.add_argument("--output", default="output/baselines", help="Output directory")
+    parser.add_argument("--no-graph", action="store_true", help="Disable graph learning baselines (SGC/GAT-like)")
+    parser.add_argument("--no-degroot", action="store_true", help="Disable DeGroot dynamics baseline")
+    parser.add_argument("--degroot-steps", type=int, default=30, help="DeGroot iteration steps")
+    parser.add_argument("--degroot-noise-std", type=float, default=0.0, help="DeGroot private signal noise std")
     parser.add_argument(
         "--degroot-sweep-steps",
         type=str,
         default="",
-        help="扫描 DeGroot 步数，例如 '1,2,5,10,30,100'（会额外输出 sweep csv/json/plot）",
+        help="Sweep DeGroot steps, e.g. '1,2,5,10,30,100' (will output additional sweep csv/json/plot)",
     )
     parser.add_argument(
         "--degroot-sweep-epoch",
         type=int,
         default=6,
-        help="扫描用的 epoch（1-6），默认 6（期末）",
+        help="Epoch for sweep (1-6), default 6 (final)",
     )
     parser.add_argument(
         "--degroot-sweep-only",
         action="store_true",
-        help="只运行 DeGroot sweep（跳过其他基线）",
+        help="Only run DeGroot sweep (skip other baselines)",
     )
     args = parser.parse_args()
     
     print("=" * 60)
-    print("外部基线对比实验")
+    print("External Baseline Comparison Experiments")
     print("=" * 60)
     
-    # 加载配置和数据
     config = load_config(args.config)
     split = load_and_filter(config["data"]["cleaned_csv"])
 
-    # 输出目录
     output_dir = Path(args.output)
     output_dir.mkdir(parents=True, exist_ok=True)
     
-    # 可选：DeGroot sweep（收敛速度 vs 多样性塌缩）
     sweep_steps = _parse_int_list(args.degroot_sweep_steps)
     sweep_epoch_idx = int(args.degroot_sweep_epoch) - 1
     if args.degroot_sweep_steps:
         if sweep_epoch_idx < 0 or sweep_epoch_idx > 5:
             raise ValueError("--degroot-sweep-epoch must be in [1,6]")
 
-    # 运行基线（除非 sweep-only）
     if args.degroot_sweep_only:
         results = {}
     else:
@@ -806,7 +777,7 @@ def main():
 
     if sweep_steps:
         print("\n" + "=" * 60)
-        print(f"DeGroot sweep（Epoch {sweep_epoch_idx + 1}）: steps={sweep_steps}, noise_std={args.degroot_noise_std}")
+        print(f"DeGroot sweep (Epoch {sweep_epoch_idx + 1}): steps={sweep_steps}, noise_std={args.degroot_noise_std}")
         print("=" * 60)
         sweep_rows = run_degroot_sweep(
             split=split,
@@ -829,9 +800,8 @@ def main():
         with open(output_dir / "baseline_results.json", "w") as f:
             json.dump(results, f, indent=2)
     
-    # 打印汇总表
     print("\n" + "=" * 60)
-    print("汇总表（Epoch 6，即最终考试）")
+    print("Summary Table (Epoch 6, Final Exam)")
     print("=" * 60)
     print(f"{'Method':<25} {'DPAE':<15} {'Spearman ρ':<15} {'Acc@3':<10}")
     print("-" * 60)
@@ -839,7 +809,7 @@ def main():
     if not results:
         print("(degroot-sweep-only: skipped)")
         print("=" * 60)
-        print(f"\n结果已保存到: {output_dir}")
+        print(f"\nResults saved to: {output_dir}")
         return
 
     shown_methods = ["random", "self_only", "linear_regression", "mlp"]
@@ -851,7 +821,7 @@ def main():
     for method in shown_methods:
         if method not in results or not results[method]:
             continue
-        final_epoch = results[method][-1]  # Epoch 6
+        final_epoch = results[method][-1]
         dpae_str = f"{final_epoch['dpae']:.3f}±{final_epoch.get('dpae_std', 0.0):.3f}"
         rho_str = f"{final_epoch.get('spearman_rho', 0.0):.3f}"
         acc3_str = f"{final_epoch.get('acc_3', 0.0):.3f}"
@@ -860,12 +830,11 @@ def main():
             extra = f"  (div={final_epoch['diversity_final']:.4f})"
         print(f"{method:<25} {dpae_str:<15} {rho_str:<15} {acc3_str:<10}{extra}")
     
-    # 添加我们的方法（从已有实验结果）
     print("-" * 60)
     print(f"{'Ours (Rashomon Agents)':<25} {'0.124±0.009':<15} {'0.876':<15} {'0.278':<10}")
     print("=" * 60)
     
-    print(f"\n结果已保存到: {output_dir}")
+    print(f"\nResults saved to: {output_dir}")
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
-# From-scratch config for Rashomon Set LLM Agents + RAG
+# Configuration for Rashomon Set LLM Agents + RAG
 data:
-  # 运行主实验只需要 cleaned_csv。
-  # 如果你要从更“原始”的表重新清洗，可自行准备 raw_csv 并运行 `src/clean_dataset.py`。
+  # Main experiment requires cleaned_csv only.
+  # To re-clean from raw table, prepare raw_csv and run `src/clean_dataset.py`.
   cleaned_csv: data/FINAL_full_plus_all_scores_cleaned.v2.csv
 
 selection:
@@ -30,7 +30,7 @@ llm:
   max_tokens: 300
   timeout_sec: 60
   max_retries: 6
-  max_workers: 100  # 并行线程数（根据服务器配置可调整）
+  max_workers: 100
 
 simulation:
   epochs: 6
@@ -41,4 +41,3 @@ simulation:
 
 output:
   root: output
-

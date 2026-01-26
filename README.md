@@ -1,91 +1,87 @@
-# Rashomon Set Agents（罗生门集合智能体）
+# Rashomon Set Agents
 
-UAI 2026 Proposal Implementation：通过"罗生门集合"智能体对社会感知中的认知不确定性建模。
+Implementation of LLM-driven multi-agent simulation framework for modeling epistemic uncertainty in social perception via "Rashomon Set" agents.
 
-## 项目简介
+## Overview
 
-本项目实现了一个 LLM 驱动的多智能体概率建模框架，用于研究个体主观社交感知的差异（罗生门效应）如何通过微观交互传播，进而涌现宏观学业分化与集体误判。
+This project implements an LLM-driven multi-agent probabilistic modeling framework to study how individual differences in subjective social perception (Rashomon effect) propagate through micro-level interactions, leading to macro-level academic differentiation and collective misjudgment.
 
-## 主要特性
+## Key Features
 
-- **主观图谱（Subjective Graph）**：为每个智能体构建独立的主观社交图谱，模拟真实世界中的认知偏差
-- **检索增强生成（RAG）**：智能体通过受限视野检索访问信息，注入与焦虑水平相关的认知噪声
-- **贝叶斯信念更新**：智能体通过 LLM 生成的可信度权重进行贝叶斯更新
-- **多智能体仿真**：模拟完整学期的交互过程，研究认知不确定性的传播机制
+- **Subjective Graph**: Constructs independent subjective social graphs for each agent, simulating cognitive biases in the real world
+- **Retrieval-Augmented Generation (RAG)**: Agents access information through limited-scope retrieval with cognitive noise injection related to anxiety levels
+- **Bayesian Belief Update**: Agents perform Bayesian updates using LLM-generated trust weights
+- **Multi-Agent Simulation**: Simulates complete semester interactions to study the propagation mechanism of cognitive uncertainty
 
-## 项目结构
+## Project Structure
 
 ```
 EduAgent_OpenSource/
-├── rashomon_agents_proposal/    # 主项目代码
-│   ├── Proposal_2.tex          # 论文草稿
-│   ├── config.yaml             # 配置文件
-│   ├── requirements.txt        # Python 依赖
-│   ├── src/                    # 源代码
-│   └── data/                   # 数据目录（需自行准备）
-└── README.md                   # 本文件
+├── rashomon_agents/         # Main project code
+│   ├── config.yaml          # Configuration file
+│   ├── requirements.txt    # Python dependencies
+│   ├── src/                 # Source code
+│   └── data/                # Data directory (prepare your own)
+└── README.md                # This file
 ```
 
-详细的项目结构和使用说明请参考 [rashomon_agents_proposal/README.md](rashomon_agents_proposal/README.md)。
+## Quick Start
 
-## 快速开始
-
-### 1. 安装依赖
+### 1. Install Dependencies
 
 ```bash
-cd rashomon_agents_proposal
+cd rashomon_agents
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 2. 准备数据
+### 2. Prepare Data
 
-本项目默认不包含数据文件（出于隐私和体积考虑）。您需要：
+This project does not include data files by default (for privacy and size considerations). You need to:
 
-1. 准备清洗后的 CSV 数据文件
-2. 在 `config.yaml` 中配置数据路径
+1. Prepare cleaned CSV data files
+2. Configure the data path in `config.yaml`
 
-### 3. 运行实验
+### 3. Run Experiments
 
 ```bash
-# 快速测试（dry-run）
+# Quick test (dry-run)
 python -m src.main --config config.yaml --dry-run
 
-# 完整实验
+# Full experiment
 python -m src.main --config config.yaml --seeds 42,43,44,45,46
 ```
 
-## 数据说明
+## Data Description
 
-本项目使用的数据包含：
-- 学生基本信息（年级、班级、性别等）
-- 社交网络问卷数据（好友关系、社交感知等）
-- 6 次考试成绩序列
+The data used in this project includes:
+- Basic student information (grade, class, gender, etc.)
+- Social network questionnaire data (friend relationships, social perception, etc.)
+- 6 exam score sequences
 
-**重要**：出于隐私保护，本仓库不包含任何原始数据文件。用户需要自行准备符合格式要求的数据。
+**Important**: For privacy protection, this repository does not include any raw data files. Users need to prepare data files that meet the format requirements.
 
-## 引用
+## Citation
 
-如果您使用本代码，请引用：
+If you use this code, please cite:
 
 ```bibtex
 @inproceedings{anonymous2026rashomon,
   title={Modeling Epistemic Uncertainty in Social Perception via "Rashomon Set" Agents},
   author={Anonymous},
-  booktitle={Proceedings of the Conference on Uncertainty in Artificial Intelligence (UAI)},
   year={2026}
 }
 ```
 
-## 许可证
+## License
 
-本项目采用 MIT 许可证。详见 [LICENSE](LICENSE) 文件。
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
 
-## 贡献
+## Contributing
 
-欢迎提交 Issue 和 Pull Request。
+Issues and Pull Requests are welcome.
 
-## 免责声明
+## Disclaimer
 
-本代码仅供研究使用。使用本代码时，请确保遵守相关数据保护法规和伦理准则。
+This code is for research purposes only. When using this code, please ensure compliance with relevant data protection regulations and ethical guidelines.

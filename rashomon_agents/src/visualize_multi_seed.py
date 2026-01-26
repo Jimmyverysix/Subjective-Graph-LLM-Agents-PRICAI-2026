@@ -1,17 +1,10 @@
-"""UAI 风格可视化（多种子 + 消融对比）。
+"""Multi-seed visualization with ablation comparison.
 
-生成目标：
-- 跨 epoch 的指标轨迹（均值 ± 标准差带）
-- 最终 epoch 的消融对比（误差条）
-- 性能-成本权衡散点图（Pareto-like）
+Generates:
+- Metric trajectories across epochs (mean ± std bands)
+- Final epoch ablation comparison (error bars)
+- Performance-cost trade-off scatter plot (Pareto-like)
 
-用法示例：
-python -m src.visualize_uai \
-  --baseline output/01-22-11-04_baseline_multiseed/multi_seed_summary.json \
-  --no_rag output/01-22-11-05_ablation_no_rag/multi_seed_summary.json \
-  --no_subj output/01-22-11-05_ablation_no_subjective_graph/multi_seed_summary.json \
-  --no_trust output/01-22-11-05_ablation_no_llm_trust/multi_seed_summary.json \
-  --outdir output/uai_figures
 """
 
 from __future__ import annotations
@@ -62,7 +55,7 @@ def _series_simple(summary: Dict[str, Any], field: str) -> np.ndarray:
     return np.array([summary["epochs"][str(e)][field] for e in eps], dtype=float)
 
 
-def _style_uai():
+def _style_figures():
     plt.style.use("seaborn-v0_8-whitegrid")
     matplotlib.rcParams.update(
         {
@@ -92,7 +85,6 @@ def plot_metric_trajectories(
     T = len(_epochs(settings[0].summary))
     x = np.arange(1, T + 1)
 
-    # 说明：不要把 legend 放到图下方（容易与 x 轴标签重叠）
     fig, axes = plt.subplots(1, 2, figsize=(11.6, 4.2), constrained_layout=False)
 
     # Left: DPAE
@@ -227,12 +219,12 @@ def plot_cost_tradeoff(settings: List[Setting], outdir: Path):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="UAI 风格多种子与消融对比可视化")
-    parser.add_argument("--baseline", required=True, help="Baseline 的 multi_seed_summary.json 路径")
-    parser.add_argument("--no_rag", required=True, help="No-RAG 的 multi_seed_summary.json 路径")
-    parser.add_argument("--no_subj", required=True, help="No-Subjective-Graph 的 multi_seed_summary.json 路径")
-    parser.add_argument("--no_trust", required=True, help="No-LLM-Trust 的 multi_seed_summary.json 路径")
-    parser.add_argument("--outdir", default="output/uai_figures", help="输出目录")
+    parser = argparse.ArgumentParser(description="Multi-seed and ablation comparison visualization")
+    parser.add_argument("--baseline", required=True, help="Path to baseline multi_seed_summary.json")
+    parser.add_argument("--no_rag", required=True, help="Path to No-RAG multi_seed_summary.json")
+    parser.add_argument("--no_subj", required=True, help="Path to No-Subjective-Graph multi_seed_summary.json")
+    parser.add_argument("--no_trust", required=True, help="Path to No-LLM-Trust multi_seed_summary.json")
+    parser.add_argument("--outdir", default="output/figures", help="Output directory")
     args = parser.parse_args()
 
     baseline = _read_json(Path(args.baseline))

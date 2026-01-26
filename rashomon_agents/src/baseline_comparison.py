@@ -1,17 +1,17 @@
-"""外部基线对比实验。
+"""External baseline comparison experiments.
 
-对比基线：
-1. Random: 随机排名
-2. Self-Only: 无社交交互的“无信息”先验
-3. Linear/MLP Regressor: 用个体问卷特征预测排名
+Comparison baselines:
+1. Random: Random ranking
+2. Self-Only: "No information" prior without social interaction
+3. Linear/MLP Regressor: Predict ranking using individual questionnaire features
 4. Graph Learning (1-hop, Rashomon view):
-   - SGC/GCN-like: 邻接归一化 + k 次一阶传播 + Ridge
-   - GAT-like: 一阶邻居注意力聚合 + Ridge
-5. DeGroot dynamics: 经典意见动力学（线性加权平均），用于对比“共识收敛速度/多样性”
+   - SGC/GCN-like: Adjacency normalization + k-step first-order propagation + Ridge
+   - GAT-like: First-order neighbor attention aggregation + Ridge
+5. DeGroot dynamics: Classical opinion dynamics (linear weighted average), for comparing "consensus convergence speed/diversity"
 
-重要说明：
-- 我们只实现“同样的一阶邻居聚合/视野约束”（不做越权全图聚合），以避免稻草人对比。
-- 本脚本只负责跑外部基线；Ours 的数值来自主实验/消融实验的汇总。
+Important notes:
+- We only implement "same first-order neighbor aggregation/scope constraints" (no unauthorized full-graph aggregation) to avoid strawman comparisons.
+- This script only runs external baselines; Ours values come from main/ablation experiment summaries.
 """
 from __future__ import annotations
 

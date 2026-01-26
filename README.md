@@ -62,17 +62,6 @@ The data used in this project includes:
 
 **Important**: For privacy protection, this repository does not include any raw data files. Users need to prepare data files that meet the format requirements.
 
-## Citation
-
-If you use this code, please cite:
-
-```bibtex
-@inproceedings{anonymous2026rashomon,
-  title={Modeling Epistemic Uncertainty in Social Perception via "Rashomon Set" Agents},
-  author={Anonymous},
-  year={2026}
-}
-```
 
 ## License
 

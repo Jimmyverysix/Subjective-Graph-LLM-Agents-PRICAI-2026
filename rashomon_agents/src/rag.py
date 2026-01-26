@@ -315,7 +315,6 @@ class RAGEngine:
         if "class_stats" in scope:
             items.extend(self._retrieve_class_stats(agent, exam_idx))
         
-        # 应用噪声（No-RAG 模式下不注入检索噪声，避免把“禁用检索”与“噪声删改”混在一起）
         if self.mode == RAGMode.SCOPED and subjective_graph is not None and subjective_graph.noise_alpha > 0:
             items = inject_retrieval_noise(
                 items, subjective_graph.noise_alpha, self.rng

@@ -510,9 +510,10 @@ def run_degroot_sweep(
     noise_std: float,
     output_dir: Path,
 ) -> List[Dict[str, float]]:
-    """扫描 DeGroot 的迭代步数，输出“收敛速度 vs 多样性塌缩”曲线数据与图。
+    """Sweep DeGroot iteration steps, output "convergence speed vs diversity collapse" curve data and plots.
 
-    产物：
+
+    Outputs:
     - output_dir/degroot_sweep_epoch{E}.json
     - output_dir/degroot_sweep_epoch{E}.csv
     - output_dir/degroot_sweep_epoch{E}.png

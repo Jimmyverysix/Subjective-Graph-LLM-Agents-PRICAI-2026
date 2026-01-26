@@ -261,12 +261,14 @@ def build_objective_friend_rashomon_set(
     class_data: ClassData,
     seed: int = 42,
 ) -> RashomonSet:
-    """消融：No-Subjective-Graph。
+    """Ablation: No-Subjective-Graph.
     
-    所有智能体共享同一“客观好友图”生成规则：仅使用显式好友块构建邻接（对称化），
-    不使用 most_popular 等推断边，也不注入 worry 噪声（α=0）。
     
-    注意：这里的“共享”指边集合的生成机制一致，且不含个体噪声；每个节点仍只保留自身邻居。
+    All agents share the same "objective friend graph" generation rule: only use explicit friend blocks to build adjacency (symmetrized),
+    do not use inferred edges like most_popular, and do not inject worry noise (α=0).
+    
+    
+    Note: "Shared" here means the edge set generation mechanism is consistent and contains no individual noise; each node still only keeps its own neighbors.
     """
     rng = np.random.default_rng(seed)
     all_ids = set(class_data.student_ids)
@@ -279,7 +281,6 @@ def build_objective_friend_rashomon_set(
                 adj[sid].add(fid)
                 adj[fid].add(sid)
 
-    # 2) 为每个学生生成一份“客观图视角”（无推断、无噪声）
     rashomon = RashomonSet(class_code=class_data.class_code)
     for sid, student in class_data.students.items():
         graph = SubjectiveGraph(

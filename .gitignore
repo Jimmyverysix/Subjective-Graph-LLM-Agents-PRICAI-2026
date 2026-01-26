@@ -1,0 +1,113 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+ENV/
+env/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# 数据和敏感信息（重要：确保不提交任何包含个人信息的文件）
+*.csv
+*.xlsx
+*.xls
+data/*.csv
+data/*.xlsx
+data/*.xls
+FINAL_*.csv
+*_id.xlsx
+*_级*.xlsx
+GRADE/
+unmatched_*.xlsx
+
+# 日志文件
+*.log
+logs/
+
+# 模型检查点
+checkpoints/
+*.pth
+*.pt
+*.ckpt
+*.h5
+*.pkl
+
+# LaTeX编译文件
+*.aux
+*.log
+*.out
+*.synctex.gz
+*.toc
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+
+# 环境变量
+.env
+.env.local
+.env.*
+
+# 配置文件中的敏感信息
+configs/*_secret.yaml
+configs/*_local.yaml
+
+# 临时文件
+tmp/
+temp/
+*.tmp
+
+# 输出文件（保留论文需要的图表，但忽略大文件）
+output/**
+!output/uai_figures/
+!output/uai_figures/*.pdf
+!output/uai_figures/*.png
+!output/uai_figures_ci/
+!output/uai_figures_ci/*.pdf
+!output/uai_figures_ci/*.png
+!output/degroot_sweep/
+!output/degroot_sweep/*.png
+!output/**/figures/
+!output/**/figures/*.png
+!output/**/figures/results_table.tex
+output/**/cache/**
+output/**/*.json
+output/**/*.csv
+output/**/*.parquet
+output/**/*.pkl
+output/**/*.pickle
+output/**/*.npz
+output/**/*.npy
+output/**/*.pt
+output/**/*.ckpt

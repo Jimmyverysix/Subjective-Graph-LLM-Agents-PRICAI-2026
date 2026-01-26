@@ -1,0 +1,44 @@
+# From-scratch config for Rashomon Set LLM Agents + RAG
+data:
+  # 运行主实验只需要 cleaned_csv。
+  # 如果你要从更“原始”的表重新清洗，可自行准备 raw_csv 并运行 `src/clean_dataset.py`。
+  cleaned_csv: data/FINAL_full_plus_all_scores_cleaned.v2.csv
+
+selection:
+  # Use fallback exam columns when base is missing
+  exam_cols: [
+    e01_total_score_2024_id_filled,
+    e02_total_score_2024_id_filled,
+    e03_total_score_2024_id_filled,
+    e04_total_score_2024_id_filled,
+    e05_total_score_2024_id_filled,
+    e06_total_score_2024_id_filled
+  ]
+  min_students_per_class: 30
+  require_friend_observation: false   # true => only students with >=1 friend id
+
+rag:
+  endpoint: http://localhost:8000/retrieve   # placeholder
+  top_k: 8
+  timeout_sec: 10
+
+llm:
+  base_url: https://openrouter.ai/api/v1
+  model: meta-llama/llama-3.1-8b-instruct
+  api_key_env: OPENROUTER_API_KEY
+  temperature: 0.7
+  max_tokens: 300
+  timeout_sec: 60
+  max_retries: 6
+  max_workers: 100  # 并行线程数（根据服务器配置可调整）
+
+simulation:
+  epochs: 6
+  rounds_per_epoch: 3
+  max_partners: 3          # each agent talks to <=3 neighbors per round
+  batch_targets: 5         # LLM returns evaluations for up to 5 targets in one call
+  worry_noise_scale: 1.0   # scales how worry injects retrieval/message noise
+
+output:
+  root: output
+

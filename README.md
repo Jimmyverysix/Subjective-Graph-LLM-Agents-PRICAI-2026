@@ -1,8 +1,17 @@
 # Subjective-Graph LLM Agents
 
-Official implementation of **[Subjective-Graph LLM Agents for Simulating Uncertainty in Classroom Social Perception](https://arxiv.org/abs/2603.20750)**.
+<p align="center">
+  <a href="https://arxiv.org/abs/2603.20750"><img src="https://img.shields.io/badge/arXiv-2603.20750-b31b1b.svg?style=flat-square&amp;logo=arxiv&amp;logoColor=white" alt="arXiv 2603.20750"></a>
+  <a href="https://2026.pricai.org/"><img src="https://img.shields.io/badge/PRICAI%202026-Regular%20Paper-2ea44f.svg?style=flat-square" alt="PRICAI 2026 Regular Paper"></a>
+  <img src="https://img.shields.io/badge/Python-3.10%2B-3776AB.svg?style=flat-square&amp;logo=python&amp;logoColor=white" alt="Python 3.10 or later">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square" alt="MIT License"></a>
+</p>
 
 ## Overview
+
+<p align="center">
+  <img src="assets/overview.png" alt="Overview of the subjective-graph LLM-agent framework, from observed classroom inputs and per-agent subjective graphs through LLM-mediated interaction to multi-epoch simulation outputs" width="100%">
+</p>
 
 This repository implements a multi-agent framework for studying how uncertainty in classroom social perception affects academic-belief formation. Each student agent operates over an individualized subjective graph rather than a shared omniscient network. These graphs determine what social information an agent can retrieve, whom the agent can interact with, and how received messages are incorporated into its beliefs.
 

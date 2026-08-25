@@ -1,4 +1,4 @@
-# Subjective-Graph LLM Agents
+# Subjective-Graph LLM Agents (PRICAI 2026)
 
 <p align="center">
   <a href="https://arxiv.org/abs/2603.20750"><img src="https://img.shields.io/badge/arXiv-2603.20750-b31b1b.svg?style=flat-square&amp;logo=arxiv&amp;logoColor=white" alt="arXiv 2603.20750"></a>
@@ -26,7 +26,7 @@ The implementation includes:
 ## Repository Structure
 
 ```text
-EduAgent_OpenSource/
+Subjective-Graph-LLM-Agents-PRICAI-2026/
 ├── LICENSE
 ├── README.md
 └── rashomon_agents/
@@ -53,8 +53,8 @@ EduAgent_OpenSource/
 Python 3.10 or later is recommended.
 
 ```bash
-git clone https://github.com/Jimmyverysix/EduAgent_OpenSource.git
-cd EduAgent_OpenSource/rashomon_agents
+git clone https://github.com/Jimmyverysix/Subjective-Graph-LLM-Agents-PRICAI-2026.git
+cd Subjective-Graph-LLM-Agents-PRICAI-2026/rashomon_agents
 
 python3 -m venv .venv
 source .venv/bin/activate
